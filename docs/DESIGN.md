@@ -567,7 +567,7 @@ version: '3.8'
 
 services:
   crypto-monitor:
-    build: .
+    build: ..
     container_name: crypto-monitor
     restart: unless-stopped
     volumes:
