@@ -74,3 +74,43 @@ async def test_fetch_oi_returns_none_when_amount_missing():
 
     result = await fetcher._fetch_oi("binance", "BTC/USDT:USDT")
     assert result is None
+
+
+async def test_fetch_market_indicators():
+    from unittest.mock import AsyncMock, MagicMock
+
+    from src.collector.indicator_fetcher import IndicatorFetcher
+
+    fetcher = IndicatorFetcher(symbols=["BTC/USDT:USDT"])
+
+    mock_exchange = MagicMock()
+
+    # Mock 大户账户多空比
+    mock_exchange.fetch_long_short_ratio_history = AsyncMock(
+        return_value=[{"longShortRatio": 1.5, "timestamp": 1706600000000}]
+    )
+
+    # Mock 大户持仓多空比
+    mock_exchange.fapiDataGetTopLongShortPositionRatio = AsyncMock(
+        return_value=[{"longShortRatio": "1.6", "timestamp": "1706600000000"}]
+    )
+
+    # Mock 散户账户多空比
+    mock_exchange.fapiDataGetGlobalLongShortAccountRatio = AsyncMock(
+        return_value=[{"longShortRatio": "0.9", "timestamp": "1706600000000"}]
+    )
+
+    # Mock 主动买卖比
+    mock_exchange.fapiDataGetTakerlongshortRatio = AsyncMock(
+        return_value=[{"buySellRatio": "1.1", "timestamp": "1706600000000"}]
+    )
+
+    fetcher.binance = mock_exchange
+
+    result = await fetcher.fetch_market_indicators("BTC/USDT:USDT")
+
+    assert result is not None
+    assert result.top_account_ratio == 1.5
+    assert result.top_position_ratio == 1.6
+    assert result.global_account_ratio == 0.9
+    assert result.taker_buy_sell_ratio == 1.1

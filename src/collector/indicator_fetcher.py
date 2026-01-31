@@ -6,7 +6,7 @@ from typing import Any
 
 import ccxt.async_support as ccxt
 
-from src.storage.models import OISnapshot
+from src.storage.models import MarketIndicator, OISnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -127,4 +127,55 @@ class IndicatorFetcher:
             )
         except Exception as e:
             logger.error(f"Failed to fetch indicators for {symbol}: {e}")
+            return None
+
+    async def fetch_market_indicators(self, symbol: str) -> MarketIndicator | None:
+        try:
+            assert self.binance is not None
+
+            raw_symbol = symbol.replace("/", "").replace(":USDT", "")
+
+            # 大户账户多空比 (使用现有的 fetch_long_short_ratio_history)
+            top_account_data = await self.binance.fetch_long_short_ratio_history(
+                symbol, "5m", limit=1
+            )
+            top_account_ratio = (
+                float(top_account_data[-1]["longShortRatio"]) if top_account_data else 1.0
+            )
+
+            # 大户持仓多空比
+            top_position_data = await self.binance.fapiDataGetTopLongShortPositionRatio(
+                {"symbol": raw_symbol, "period": "5m", "limit": 1}
+            )
+            top_position_ratio = (
+                float(top_position_data[0]["longShortRatio"]) if top_position_data else 1.0
+            )
+
+            # 散户账户多空比 (全局账户)
+            global_account_data = await self.binance.fapiDataGetGlobalLongShortAccountRatio(
+                {"symbol": raw_symbol, "period": "5m", "limit": 1}
+            )
+            global_account_ratio = (
+                float(global_account_data[0]["longShortRatio"]) if global_account_data else 1.0
+            )
+
+            # 主动买卖比
+            taker_data = await self.binance.fapiDataGetTakerlongshortRatio(
+                {"symbol": raw_symbol, "period": "5m", "limit": 1}
+            )
+            taker_ratio = float(taker_data[0]["buySellRatio"]) if taker_data else 1.0
+
+            import time
+
+            return MarketIndicator(
+                id=None,
+                symbol=symbol,
+                timestamp=int(time.time() * 1000),
+                top_account_ratio=top_account_ratio,
+                top_position_ratio=top_position_ratio,
+                global_account_ratio=global_account_ratio,
+                taker_buy_sell_ratio=taker_ratio,
+            )
+        except Exception as e:
+            logger.error(f"Failed to fetch market indicators for {symbol}: {e}")
             return None
