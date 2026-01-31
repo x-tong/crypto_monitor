@@ -50,3 +50,26 @@ async def test_request_handles_error():
 
     with pytest.raises(BinanceAPIError, match="Invalid symbol"):
         await client._request("GET", "/fapi/v1/ticker/price", {"symbol": "INVALID"})
+
+
+@pytest.mark.asyncio
+async def test_get_klines():
+    from src.client.models import Kline
+
+    client = BinanceClient()
+
+    mock_data = [
+        [1704067200000, "42000.0", "42500.0", "41800.0", "42300.0", "1000.0", 1704070799999]
+    ]
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=mock_data)
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(return_value=mock_response)
+    client._session = mock_session
+
+    klines = await client.get_klines("BTCUSDT", "1h", limit=1)
+    assert len(klines) == 1
+    assert isinstance(klines[0], Kline)
+    assert klines[0].close == 42300.0

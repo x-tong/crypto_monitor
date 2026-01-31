@@ -59,3 +59,30 @@ class BinanceClient:
         if self._session:
             await self._session.close()
             self._session = None
+
+    async def get_klines(
+        self,
+        symbol: str,
+        interval: str,
+        limit: int = 500,
+    ) -> list["Kline"]:
+        """获取 K 线数据"""
+        from src.client.models import Kline
+
+        data = await self._request(
+            "GET",
+            "/fapi/v1/klines",
+            {"symbol": symbol, "interval": interval, "limit": limit},
+        )
+        return [
+            Kline(
+                open_time=int(k[0]),
+                open=float(k[1]),
+                high=float(k[2]),
+                low=float(k[3]),
+                close=float(k[4]),
+                volume=float(k[5]),
+                close_time=int(k[6]),
+            )
+            for k in data
+        ]
