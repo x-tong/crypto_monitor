@@ -12,15 +12,14 @@ BTC/ETH 永续合约市场监控系统，通过 Telegram Bot 推送市场数据�
 
 | 特性 | 说明 |
 |------|------|
-| 双交易所 | Binance + OKX 数据聚合 |
+| 数据源 | Binance Futures |
 | 主力识别 | 大单过滤 (动态 P95 阈值) |
 | 百分位显示 | 当前数据在 7 天历史中的位置 |
 
 ## 技术栈
 
 - Python 3.14 + uv
-- ccxt (交易所 API)
-- websockets (Binance 爆仓流)
+- aiohttp + websockets (Binance API)
 - python-telegram-bot
 - aiosqlite
 - pydantic + PyYAML
@@ -102,7 +101,7 @@ intervals:
 
 💰 主力资金 (大单净流向):
   1h: +$5.2M 🟢 P62 | 4h: +$18.3M 🟡 P78
-  Binance: +$28M | OKX: +$14M ✓一致
+  Binance: +$28M
 
 📈 持仓量 (OI): $18.2B
   1h: +1.2% 🟢 P58 | 4h: +2.3% 🟡 P76

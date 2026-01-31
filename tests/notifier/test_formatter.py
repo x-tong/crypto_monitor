@@ -15,7 +15,6 @@ def test_format_report():
         "flow_24h": 42100000,
         "flow_24h_pct": 55,
         "flow_binance": 28000000,
-        "flow_okx": 14000000,
         "oi_value": 18200000000,
         "oi_change_1h": 1.2,
         "oi_change_1h_pct": 58,
@@ -96,7 +95,6 @@ def test_format_insight_report():
         "flow_1h": 5_200_000,
         "flow_1h_pct": 58,
         "flow_binance": 3_800_000,
-        "flow_okx": 1_400_000,
         # 持仓 & 爆仓
         "oi_value": 18_200_000_000,
         "oi_change_1h": 1.2,

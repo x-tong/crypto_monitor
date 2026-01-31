@@ -7,7 +7,7 @@ def test_calculate_liquidations():
     liqs = [
         Liquidation(1, "binance", "BTC/USDT:USDT", 1706600000000, "sell", 99000, 1.0, 99000),
         Liquidation(2, "binance", "BTC/USDT:USDT", 1706600001000, "sell", 98500, 0.5, 49250),
-        Liquidation(3, "okx", "BTC/USDT:USDT", 1706600002000, "buy", 101000, 0.3, 30300),
+        Liquidation(3, "binance", "BTC/USDT:USDT", 1706600002000, "buy", 101000, 0.3, 30300),
     ]
 
     stats = calculate_liquidations(liqs)

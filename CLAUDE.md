@@ -9,7 +9,7 @@ BTC/ETH 永续合约市场监控系统，通过 Telegram Bot 推送：
 
 ## WHY
 
-- 双交易所（Binance + OKX）数据聚合，避免单一数据源偏差
+- Binance Futures 数据源
 - 大单过滤（P95 动态阈值）识别主力资金
 - 百分位显示帮助判断当前数据在历史中的位置
 - 纯数据工具，不做信号判断
@@ -22,8 +22,7 @@ WebSocket 采集 → SQLite 存储 → 聚合计算 → Telegram 推送
 
 **技术栈：**
 - Python 3.14 (uv 虚拟环境)
-- ccxt（交易所 API）
-- websockets（Binance 爆仓）
+- aiohttp + websockets（Binance API）
 - python-telegram-bot
 - aiosqlite
 - pydantic + PyYAML（配置）
