@@ -7,15 +7,17 @@ from pathlib import Path
 from typing import Any
 
 from src.aggregator.flow import calculate_flow
+from src.aggregator.insight import calculate_change, calculate_divergence, generate_summary
 from src.aggregator.liquidation import calculate_liquidations
 from src.aggregator.oi import calculate_oi_change, interpret_oi_price
+from src.alert.insight_trigger import check_insight_alerts
 from src.alert.price_monitor import check_price_alerts
 from src.collector.binance_liq import BinanceLiquidationCollector
 from src.collector.binance_trades import BinanceTradesCollector
 from src.collector.indicator_fetcher import IndicatorFetcher
 from src.collector.okx_trades import OKXTradesCollector
 from src.config import Config, load_config
-from src.notifier.formatter import format_report
+from src.notifier.formatter import format_insight_report, format_report
 from src.notifier.telegram import TelegramNotifier
 from src.storage.database import Database
 from src.storage.models import Liquidation, PriceAlert, Trade
@@ -116,7 +118,10 @@ class CryptoMonitor:
         return "\n".join(lines) if len(lines) > 1 else "暂无监控价位"
 
     async def _on_report(self, symbol: str) -> str:
-        return await self._generate_report(f"{symbol}/USDT:USDT")
+        full_symbol = f"{symbol}/USDT:USDT"
+        if self.config.insight.enabled:
+            return await self._generate_insight_report(full_symbol)
+        return await self._generate_report(full_symbol)
 
     async def _on_status(self) -> str:
         uptime = time.time() - self.start_time
@@ -193,13 +198,123 @@ class CryptoMonitor:
 
         return format_report(data)
 
+    async def _generate_insight_report(self, symbol: str) -> str:
+        """生成市场洞察报告"""
+        # 获取当前和历史市场指标
+        current_mi = await self.db.get_latest_market_indicator(symbol)
+        history_mi = await self.db.get_market_indicator_history(symbol, hours=24)
+
+        if not current_mi:
+            return await self._generate_report(symbol)  # 回退到旧报告
+
+        # 获取 1h 前的指标用于计算变化
+        mi_1h_ago = None
+        one_hour_ago = int(time.time() * 1000) - 3600 * 1000
+        for mi in history_mi:
+            if mi.timestamp <= one_hour_ago:
+                mi_1h_ago = mi
+                break
+
+        if not mi_1h_ago:
+            mi_1h_ago = current_mi  # 数据不足时用当前值
+
+        # 计算分歧历史
+        divergence_history = [
+            abs(mi.top_position_ratio - mi.global_account_ratio) for mi in history_mi
+        ]
+
+        divergence_result = calculate_divergence(
+            current_mi.top_position_ratio,
+            current_mi.global_account_ratio,
+            divergence_history,
+            self.config.insight.divergence.mild_percentile,
+            self.config.insight.divergence.strong_percentile,
+        )
+
+        # 获取其他数据
+        trades_1h = await self.db.get_trades(symbol, hours=1)
+        flow_1h = calculate_flow(trades_1h)
+
+        liqs_1h = await self.db.get_liquidations(symbol, hours=1)
+        liq_stats = calculate_liquidations(liqs_1h)
+        liq_long_ratio = liq_stats.long / liq_stats.total if liq_stats.total > 0 else 0.5
+
+        current_oi = await self.db.get_latest_oi(symbol)
+        past_oi_1h = await self.db.get_oi_at(symbol, hours_ago=1)
+        oi_change_1h = calculate_oi_change(current_oi, past_oi_1h)
+
+        indicators = await self.indicator_fetcher.fetch_indicators(symbol)
+
+        # 计算变化
+        top_change = calculate_change(
+            current_mi.top_position_ratio, mi_1h_ago.top_position_ratio
+        )
+        global_change = calculate_change(
+            current_mi.global_account_ratio, mi_1h_ago.global_account_ratio
+        )
+        taker_change = calculate_change(
+            current_mi.taker_buy_sell_ratio, mi_1h_ago.taker_buy_sell_ratio
+        )
+
+        # 生成总结
+        summary_data = {
+            "top_ratio_change": top_change["diff"],
+            "divergence": divergence_result["divergence"],
+            "divergence_level": divergence_result["level"],
+            "flow_1h": flow_1h.net,
+            "liq_long_ratio": liq_long_ratio,
+        }
+        summary = generate_summary(summary_data)
+
+        # 组装报告数据
+        data = {
+            "symbol": symbol.split("/")[0],
+            "price": indicators.futures_price if indicators else 0,
+            "price_change_1h": 0,  # 需要从历史价格计算
+            "summary": summary,
+            # 大户 vs 散户
+            "top_position_ratio": current_mi.top_position_ratio,
+            "top_position_change": top_change["diff"],
+            "top_position_pct": 50,  # 需要计算百分位
+            "global_account_ratio": current_mi.global_account_ratio,
+            "global_account_change": global_change["diff"],
+            "global_account_pct": 50,
+            "divergence": divergence_result["divergence"],
+            "divergence_pct": divergence_result["percentile"],
+            "divergence_level": divergence_result["level"],
+            # 资金动向
+            "taker_ratio": current_mi.taker_buy_sell_ratio,
+            "taker_ratio_change": taker_change["diff"],
+            "taker_ratio_pct": 50,
+            "flow_1h": flow_1h.net,
+            "flow_1h_pct": 50,
+            "flow_binance": flow_1h.by_exchange.get("binance", 0),
+            "flow_okx": flow_1h.by_exchange.get("okx", 0),
+            # 持仓 & 爆仓
+            "oi_value": current_oi.open_interest_usd if current_oi else 0,
+            "oi_change_1h": oi_change_1h,
+            "oi_change_1h_pct": 50,
+            "liq_1h_total": liq_stats.total,
+            "liq_long_ratio": liq_long_ratio,
+            # 情绪指标
+            "funding_rate": indicators.funding_rate if indicators else 0,
+            "funding_rate_pct": 50,
+            "spot_perp_spread": indicators.spot_perp_spread if indicators else 0,
+            "spot_perp_spread_pct": 50,
+        }
+
+        return format_insight_report(data)
+
     async def _scheduled_report(self) -> None:
         interval = self.config.intervals.report_hours * 3600
         while self.running:
             await asyncio.sleep(interval)
             for symbol in self.config.symbols:
                 try:
-                    report = await self._generate_report(symbol)
+                    if self.config.insight.enabled:
+                        report = await self._generate_insight_report(symbol)
+                    else:
+                        report = await self._generate_report(symbol)
                     await self.notifier.send_message(report)
                 except Exception as e:
                     logger.error(f"Failed to send report for {symbol}: {e}")
@@ -208,9 +323,18 @@ class CryptoMonitor:
         interval = self.config.intervals.oi_fetch_minutes * 60
         while self.running:
             try:
+                # OI 采集
                 oi_snapshots = await self.indicator_fetcher.fetch_all_oi()
                 for oi in oi_snapshots:
                     await self.db.insert_oi_snapshot(oi)
+
+                # 市场指标采集
+                if self.config.insight.enabled:
+                    for symbol in self.config.symbols:
+                        mi = await self.indicator_fetcher.fetch_market_indicators(symbol)
+                        if mi:
+                            await self.db.insert_market_indicator(mi)
+                            logger.debug(f"Market indicators: {symbol} saved")
             except Exception as e:
                 logger.error(f"Failed to fetch indicators: {e}")
             await asyncio.sleep(interval)
@@ -247,6 +371,65 @@ class CryptoMonitor:
                 except Exception as e:
                     logger.error(f"Failed to check alerts for {symbol}: {e}")
 
+    async def _check_insight_alerts(self) -> None:
+        """检测市场异动"""
+        if not self.config.insight.enabled:
+            return
+
+        # 存储上一次的状态
+        previous_states: dict[str, dict] = {}
+
+        while self.running:
+            await asyncio.sleep(60)  # 每分钟检查
+
+            for symbol in self.config.symbols:
+                try:
+                    current_mi = await self.db.get_latest_market_indicator(symbol)
+                    if not current_mi:
+                        continue
+
+                    trades_1h = await self.db.get_trades(symbol, hours=1)
+                    flow = calculate_flow(trades_1h)
+
+                    # 计算分歧
+                    history_mi = await self.db.get_market_indicator_history(symbol, hours=24)
+                    divergence_history = [
+                        abs(mi.top_position_ratio - mi.global_account_ratio)
+                        for mi in history_mi
+                    ]
+                    divergence_result = calculate_divergence(
+                        current_mi.top_position_ratio,
+                        current_mi.global_account_ratio,
+                        divergence_history,
+                    )
+
+                    current_state = {
+                        "divergence_level": divergence_result["level"],
+                        "top_ratio": current_mi.top_position_ratio,
+                        "flow_1h": flow.net,
+                        "taker_ratio": current_mi.taker_buy_sell_ratio,
+                        "taker_ratio_pct": 50,  # 需要计算
+                    }
+
+                    if symbol in previous_states:
+                        alerts = check_insight_alerts(
+                            current_state,
+                            previous_states[symbol],
+                            self.config.insight.alerts.flow_threshold_usd,
+                        )
+
+                        for alert in alerts:
+                            # 发送异动提醒
+                            short_symbol = symbol.split("/")[0]
+                            msg = f"⚡ {short_symbol} 市场异动\n\n{alert.message}"
+                            await self.notifier.send_message(msg)
+                            logger.info(f"Insight alert: {symbol} - {alert.type}")
+
+                    previous_states[symbol] = current_state
+
+                except Exception as e:
+                    logger.error(f"Failed to check insight alerts for {symbol}: {e}")
+
     async def run(self) -> None:
         await self.init()
         self.running = True
@@ -263,6 +446,7 @@ class CryptoMonitor:
             asyncio.create_task(self._scheduled_report()),
             asyncio.create_task(self._fetch_indicators()),
             asyncio.create_task(self._check_alerts()),
+            asyncio.create_task(self._check_insight_alerts()),
         ]
 
         logger.info("Crypto Monitor started")
