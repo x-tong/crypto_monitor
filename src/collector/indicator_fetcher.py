@@ -25,9 +25,23 @@ class Indicators:
 
 @dataclass
 class LongShortIndicators:
+    """4 种多空比指标"""
+
+    # 散户多空比
+    global_long: float
+    global_short: float
     global_ratio: float
+    # 大户账户多空比
+    top_account_long: float
+    top_account_short: float
     top_account_ratio: float
+    # 大户持仓多空比
+    top_position_long: float
+    top_position_short: float
     top_position_ratio: float
+    # Taker 买卖比
+    taker_buy: float
+    taker_sell: float
     taker_ratio: float
 
 
@@ -120,9 +134,17 @@ class IndicatorFetcher:
             taker = await client.get_taker_long_short_ratio(ws_symbol, "1h")
 
             return LongShortIndicators(
+                global_long=global_ls.long_ratio,
+                global_short=global_ls.short_ratio,
                 global_ratio=global_ls.long_short_ratio,
+                top_account_long=top_account.long_ratio,
+                top_account_short=top_account.short_ratio,
                 top_account_ratio=top_account.long_short_ratio,
+                top_position_long=top_position.long_ratio,
+                top_position_short=top_position.short_ratio,
                 top_position_ratio=top_position.long_short_ratio,
+                taker_buy=taker.buy_vol,
+                taker_sell=taker.sell_vol,
                 taker_ratio=taker.buy_sell_ratio,
             )
         except Exception as e:

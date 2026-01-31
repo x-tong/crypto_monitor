@@ -342,37 +342,37 @@ class CryptoMonitor:
                     if ls_indicators:
                         timestamp = int(time.time() * 1000)
 
-                        # 存储 4 种多空比数据
+                        # 存储 4 种多空比数据（直接使用 API 返回的值）
                         await self.db.insert_long_short_snapshot(
                             symbol=symbol,
                             timestamp=timestamp,
                             ratio_type="global",
-                            long_ratio=1 / (1 + 1 / ls_indicators.global_ratio),
-                            short_ratio=1 / (1 + ls_indicators.global_ratio),
+                            long_ratio=ls_indicators.global_long,
+                            short_ratio=ls_indicators.global_short,
                             long_short_ratio=ls_indicators.global_ratio,
                         )
                         await self.db.insert_long_short_snapshot(
                             symbol=symbol,
                             timestamp=timestamp,
                             ratio_type="top_account",
-                            long_ratio=1 / (1 + 1 / ls_indicators.top_account_ratio),
-                            short_ratio=1 / (1 + ls_indicators.top_account_ratio),
+                            long_ratio=ls_indicators.top_account_long,
+                            short_ratio=ls_indicators.top_account_short,
                             long_short_ratio=ls_indicators.top_account_ratio,
                         )
                         await self.db.insert_long_short_snapshot(
                             symbol=symbol,
                             timestamp=timestamp,
                             ratio_type="top_position",
-                            long_ratio=1 / (1 + 1 / ls_indicators.top_position_ratio),
-                            short_ratio=1 / (1 + ls_indicators.top_position_ratio),
+                            long_ratio=ls_indicators.top_position_long,
+                            short_ratio=ls_indicators.top_position_short,
                             long_short_ratio=ls_indicators.top_position_ratio,
                         )
                         await self.db.insert_long_short_snapshot(
                             symbol=symbol,
                             timestamp=timestamp,
                             ratio_type="taker",
-                            long_ratio=1 / (1 + 1 / ls_indicators.taker_ratio),
-                            short_ratio=1 / (1 + ls_indicators.taker_ratio),
+                            long_ratio=ls_indicators.taker_buy,
+                            short_ratio=ls_indicators.taker_sell,
                             long_short_ratio=ls_indicators.taker_ratio,
                         )
                         logger.debug(f"Long short ratio: {symbol} saved")
@@ -528,16 +528,40 @@ class CryptoMonitor:
                         liq_buckets[hour] = liq_buckets.get(hour, 0) + liq.value_usd
                     liq_history = list(liq_buckets.values())
 
+                    # 计算 OI 变化历史（遍历过去 N 小时）
+                    oi_change_history: list[float] = []
+                    for h in range(1, min(window_hours, 168)):  # 最多 168 小时 (7天)
+                        oi_h = await self.db.get_oi_at(symbol, hours_ago=h)
+                        oi_h_prev = await self.db.get_oi_at(symbol, hours_ago=h + 1)
+                        if oi_h and oi_h_prev and oi_h_prev.open_interest_usd > 0:
+                            change = (
+                                (oi_h.open_interest_usd - oi_h_prev.open_interest_usd)
+                                / oi_h_prev.open_interest_usd
+                                * 100
+                            )
+                            oi_change_history.append(abs(change))
+
+                    # 获取多空比历史
+                    ls_history = await self.db.get_long_short_snapshots(
+                        symbol, "global", hours=window_hours
+                    )
+                    ls_ratio_history = [s["long_short_ratio"] for s in ls_history]
+
                     # 计算各维度百分位
                     percentiles: dict[str, float] = {
                         "主力资金": calculate_percentile(flow.net, flow_history),
-                        "OI变化": calculate_percentile(oi_change, [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]),
+                        "OI变化": calculate_percentile(
+                            oi_change,
+                            oi_change_history if oi_change_history else [0.5, 1.0, 2.0, 3.0],
+                        ),
                         "爆仓": calculate_percentile(liq_stats.total, liq_history),
                         "资金费率": calculate_percentile(
-                            indicators.funding_rate, [-0.01, 0, 0.01, 0.02, 0.03, 0.05]
+                            indicators.funding_rate,
+                            [-0.01, 0, 0.01, 0.02, 0.03, 0.05],  # 业界标准范围
                         ),
                         "多空比": calculate_percentile(
-                            indicators.long_short_ratio, [0.8, 0.9, 1.0, 1.1, 1.2, 1.3]
+                            indicators.long_short_ratio,
+                            ls_ratio_history if ls_ratio_history else [0.8, 0.9, 1.0, 1.1, 1.2],
                         ),
                     }
 

@@ -104,6 +104,7 @@ class BinanceLiquidationCollector(BaseCollector):
                     await self.connect()
                 except Exception as e:
                     logger.error(f"Failed to reconnect: {e}")
+                    continue  # 跳过本次循环，等待下次重试
             except Exception as e:
                 logger.error(f"Binance liquidation error: {e}, retrying in {current_delay:.1f}s")
                 await asyncio.sleep(current_delay)
