@@ -1,4 +1,6 @@
 # src/aggregator/insight.py
+from typing import Any
+
 from src.aggregator.percentile import calculate_percentile
 
 
@@ -8,7 +10,7 @@ def calculate_divergence(
     history: list[float],
     mild_pct: float = 75,
     strong_pct: float = 90,
-) -> dict:
+) -> dict[str, Any]:
     """
     计算大户与散户的分歧程度
 
@@ -41,7 +43,7 @@ def calculate_divergence(
     }
 
 
-def calculate_change(current: float, previous: float) -> dict:
+def calculate_change(current: float, previous: float) -> dict[str, Any]:
     """计算指标变化"""
     diff = current - previous
     if diff > 0.001:
@@ -54,7 +56,7 @@ def calculate_change(current: float, previous: float) -> dict:
     return {"diff": round(diff, 4), "direction": direction}
 
 
-def generate_summary(data: dict) -> str:
+def generate_summary(data: dict[str, Any]) -> str:
     """
     生成一句话市场总结（规则版）
 

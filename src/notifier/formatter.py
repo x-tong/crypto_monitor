@@ -135,20 +135,15 @@ def format_insight_report(data: dict[str, Any]) -> str:
     if data["divergence_level"] == "strong":
         div_desc = "大户更看多" if data["divergence"] > 0 else "大户更看空"
         div_line = (
-            f"  ⚠️ 分歧度: {data['divergence']:.2f} 🔴 "
-            f"P{int(data['divergence_pct'])} ({div_desc})"
+            f"  ⚠️ 分歧度: {data['divergence']:.2f} 🔴 P{int(data['divergence_pct'])} ({div_desc})"
         )
     elif data["divergence_level"] == "mild":
         div_desc = "大户偏多" if data["divergence"] > 0 else "大户偏空"
         div_line = (
-            f"  分歧度: {data['divergence']:.2f} 🟡 "
-            f"P{int(data['divergence_pct'])} ({div_desc})"
+            f"  分歧度: {data['divergence']:.2f} 🟡 P{int(data['divergence_pct'])} ({div_desc})"
         )
     else:
-        div_line = (
-            f"  分歧度: {data['divergence']:.2f} 🟢 "
-            f"P{int(data['divergence_pct'])} (一致)"
-        )
+        div_line = f"  分歧度: {data['divergence']:.2f} 🟢 P{int(data['divergence_pct'])} (一致)"
 
     # 主动买卖
     taker_dir = "↑" if data["taker_ratio_change"] > 0 else "↓"
@@ -157,9 +152,7 @@ def format_insight_report(data: dict[str, Any]) -> str:
     flow_1h = _format_usd_signed(data["flow_1h"])
     flow_binance = _format_usd_signed(data["flow_binance"])
     flow_okx = _format_usd_signed(data["flow_okx"])
-    consistency = (
-        "✓一致" if (data["flow_binance"] >= 0) == (data["flow_okx"] >= 0) else "⚠️分歧"
-    )
+    consistency = "✓一致" if (data["flow_binance"] >= 0) == (data["flow_okx"] >= 0) else "⚠️分歧"
 
     # 爆仓压力
     liq_long_pct = int(data["liq_long_ratio"] * 100)

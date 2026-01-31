@@ -246,9 +246,7 @@ class CryptoMonitor:
         indicators = await self.indicator_fetcher.fetch_indicators(symbol)
 
         # 计算变化
-        top_change = calculate_change(
-            current_mi.top_position_ratio, mi_1h_ago.top_position_ratio
-        )
+        top_change = calculate_change(current_mi.top_position_ratio, mi_1h_ago.top_position_ratio)
         global_change = calculate_change(
             current_mi.global_account_ratio, mi_1h_ago.global_account_ratio
         )
@@ -377,7 +375,7 @@ class CryptoMonitor:
             return
 
         # 存储上一次的状态
-        previous_states: dict[str, dict] = {}
+        previous_states: dict[str, dict[str, Any]] = {}
 
         while self.running:
             await asyncio.sleep(60)  # 每分钟检查
@@ -394,8 +392,7 @@ class CryptoMonitor:
                     # 计算分歧
                     history_mi = await self.db.get_market_indicator_history(symbol, hours=24)
                     divergence_history = [
-                        abs(mi.top_position_ratio - mi.global_account_ratio)
-                        for mi in history_mi
+                        abs(mi.top_position_ratio - mi.global_account_ratio) for mi in history_mi
                     ]
                     divergence_result = calculate_divergence(
                         current_mi.top_position_ratio,

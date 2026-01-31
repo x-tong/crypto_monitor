@@ -1,5 +1,6 @@
 # src/alert/insight_trigger.py
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -9,8 +10,8 @@ class InsightAlert:
 
 
 def check_insight_alerts(
-    current: dict,
-    previous: dict,
+    current: dict[str, Any],
+    previous: dict[str, Any],
     flow_threshold: float = 5_000_000,
 ) -> list[InsightAlert]:
     """
@@ -27,10 +28,7 @@ def check_insight_alerts(
     alerts = []
 
     # 1. 大户散户分歧突变
-    if (
-        current["divergence_level"] == "strong"
-        and previous["divergence_level"] != "strong"
-    ):
+    if current["divergence_level"] == "strong" and previous["divergence_level"] != "strong":
         alerts.append(InsightAlert(type="divergence_spike", message="大户散户分歧加剧"))
 
     # 2. 大户方向反转 (多空比跨越 1.0)
@@ -46,15 +44,11 @@ def check_insight_alerts(
     if (curr_flow > 0 and prev_flow < 0) or (curr_flow < 0 and prev_flow > 0):
         if abs(curr_flow) > flow_threshold:
             direction = "转为流入" if curr_flow > 0 else "转为流出"
-            alerts.append(
-                InsightAlert(type="flow_reversal", message=f"资金流向反转：{direction}")
-            )
+            alerts.append(InsightAlert(type="flow_reversal", message=f"资金流向反转：{direction}"))
 
     # 4. 主动买卖比极端值
     if current["taker_ratio_pct"] > 90:
-        direction = (
-            "主动买入极端" if current.get("taker_ratio", 1) > 1 else "主动卖出极端"
-        )
+        direction = "主动买入极端" if current.get("taker_ratio", 1) > 1 else "主动卖出极端"
         alerts.append(InsightAlert(type="taker_extreme", message=direction))
 
     return alerts

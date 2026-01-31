@@ -265,9 +265,7 @@ class Database:
         row = await cursor.fetchone()
         return MarketIndicator(*row) if row else None
 
-    async def get_market_indicator_history(
-        self, symbol: str, hours: int
-    ) -> list[MarketIndicator]:
+    async def get_market_indicator_history(self, symbol: str, hours: int) -> list[MarketIndicator]:
         assert self.conn is not None
         cutoff = int(time.time() * 1000) - hours * 3600 * 1000
         cursor = await self.conn.execute(
