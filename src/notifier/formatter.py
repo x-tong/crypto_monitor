@@ -214,3 +214,42 @@ def format_insight_report(data: dict[str, Any]) -> str:
 📊 情绪指标
   资金费率: {data["funding_rate"]:+.3f}% {_level(data["funding_rate_pct"])}
   合约溢价: {data["spot_perp_spread"]:+.2f}% {_level(data["spot_perp_spread_pct"])}"""
+
+
+def format_observe_alert(data: dict[str, Any]) -> str:
+    """格式化观察提醒"""
+    lines = [
+        f"📢 {data['symbol']} 观察提醒",
+        "",
+    ]
+
+    for name, percentile, value in data["dimensions"]:
+        lines.append(f"{name}: {value} 🔴 P{int(percentile)}")
+
+    lines.extend([
+        "",
+        f"💵 ${data['price']:,.0f} ({data['price_change_1h']:+.1f}% 1h)",
+        f"⏰ {data['timestamp']}",
+    ])
+
+    return "\n".join(lines)
+
+
+def format_important_alert(data: dict[str, Any]) -> str:
+    """格式化重要提醒"""
+    dim_count = len(data["dimensions"])
+    lines = [
+        f"🚨 {data['symbol']} 重要提醒 - {dim_count} 维度共振",
+        "",
+    ]
+
+    for name, percentile, value in data["dimensions"]:
+        lines.append(f"• {name}: {value} 🔴 P{int(percentile)}")
+
+    lines.extend([
+        "",
+        f"💵 ${data['price']:,.0f} ({data['price_change_1h']:+.1f}% 1h)",
+        f"⏰ {data['timestamp']}",
+    ])
+
+    return "\n".join(lines)

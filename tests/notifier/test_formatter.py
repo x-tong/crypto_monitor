@@ -118,3 +118,44 @@ def test_format_insight_report():
     assert "1.52" in result
     assert "资金动向" in result
     assert "空头承压" in result
+
+
+def test_format_observe_alert():
+    from src.notifier.formatter import format_observe_alert
+
+    data = {
+        "symbol": "BTC",
+        "price": 103850,
+        "price_change_1h": -0.5,
+        "dimensions": [("主力资金", 92, "-$8.2M")],
+        "timestamp": "2026-01-30 14:32 UTC",
+    }
+
+    result = format_observe_alert(data)
+    assert "📢 BTC 观察提醒" in result
+    assert "主力资金" in result
+    assert "🔴 P92" in result
+    assert "-$8.2M" in result
+
+
+def test_format_important_alert():
+    from src.notifier.formatter import format_important_alert
+
+    data = {
+        "symbol": "BTC",
+        "price": 101200,
+        "price_change_1h": -2.8,
+        "dimensions": [
+            ("主力资金", 96, "-$15.2M"),
+            ("OI变化", 94, "+4.2%"),
+            ("爆仓", 95, "$35M"),
+        ],
+        "timestamp": "2026-01-30 14:32 UTC",
+    }
+
+    result = format_important_alert(data)
+    assert "🚨 BTC 重要提醒" in result
+    assert "3 维度共振" in result
+    assert "主力资金" in result
+    assert "OI变化" in result
+    assert "爆仓" in result
