@@ -332,6 +332,54 @@ class CryptoMonitor:
                 logger.error(f"Failed to fetch indicators: {e}")
             await asyncio.sleep(interval)
 
+    async def _fetch_long_short_ratio(self) -> None:
+        """采集多空比数据"""
+        interval = self.config.long_short_ratio.fetch_interval_minutes * 60
+        while self.running:
+            try:
+                for symbol in self.config.symbols:
+                    ls_indicators = await self.indicator_fetcher.fetch_long_short_indicators(symbol)
+                    if ls_indicators:
+                        timestamp = int(time.time() * 1000)
+
+                        # 存储 4 种多空比数据
+                        await self.db.insert_long_short_snapshot(
+                            symbol=symbol,
+                            timestamp=timestamp,
+                            ratio_type="global",
+                            long_ratio=1 / (1 + 1 / ls_indicators.global_ratio),
+                            short_ratio=1 / (1 + ls_indicators.global_ratio),
+                            long_short_ratio=ls_indicators.global_ratio,
+                        )
+                        await self.db.insert_long_short_snapshot(
+                            symbol=symbol,
+                            timestamp=timestamp,
+                            ratio_type="top_account",
+                            long_ratio=1 / (1 + 1 / ls_indicators.top_account_ratio),
+                            short_ratio=1 / (1 + ls_indicators.top_account_ratio),
+                            long_short_ratio=ls_indicators.top_account_ratio,
+                        )
+                        await self.db.insert_long_short_snapshot(
+                            symbol=symbol,
+                            timestamp=timestamp,
+                            ratio_type="top_position",
+                            long_ratio=1 / (1 + 1 / ls_indicators.top_position_ratio),
+                            short_ratio=1 / (1 + ls_indicators.top_position_ratio),
+                            long_short_ratio=ls_indicators.top_position_ratio,
+                        )
+                        await self.db.insert_long_short_snapshot(
+                            symbol=symbol,
+                            timestamp=timestamp,
+                            ratio_type="taker",
+                            long_ratio=1 / (1 + 1 / ls_indicators.taker_ratio),
+                            short_ratio=1 / (1 + ls_indicators.taker_ratio),
+                            long_short_ratio=ls_indicators.taker_ratio,
+                        )
+                        logger.debug(f"Long short ratio: {symbol} saved")
+            except Exception as e:
+                logger.error(f"Failed to fetch long short ratio: {e}")
+            await asyncio.sleep(interval)
+
     async def _check_alerts(self) -> None:
         while self.running:
             await asyncio.sleep(60)  # Check every minute
@@ -424,27 +472,73 @@ class CryptoMonitor:
 
     async def _check_tiered_alerts(self) -> None:
         """检查分级告警（观察/重要提醒）"""
+        from src.aggregator.percentile import calculate_percentile
+
         observe_config = self.config.alerts.observe
         important_config = self.config.alerts.important
 
         if not observe_config.enabled and not important_config.enabled:
             return
 
+        # 历史数据窗口（天数）
+        window_days = self.config.percentile.window_days
+        window_hours = window_days * 24
+
         while self.running:
             await asyncio.sleep(60)  # 每分钟检查
 
             for symbol in self.config.symbols:
                 try:
-                    indicators = await self.indicator_fetcher.fetch_indicators(symbol)
+                    # 获取当前数据
+                    trades_1h = await self.db.get_trades(symbol, hours=1)
+                    flow = calculate_flow(trades_1h)
 
-                    # TODO: 从百分位计算器获取各维度百分位
-                    # 当前使用固定值，实际需要从 percentile 模块计算
+                    liqs_1h = await self.db.get_liquidations(symbol, hours=1)
+                    liq_stats = calculate_liquidations(liqs_1h)
+
+                    current_oi = await self.db.get_latest_oi(symbol)
+                    past_oi_1h = await self.db.get_oi_at(symbol, hours_ago=1)
+                    oi_change = calculate_oi_change(current_oi, past_oi_1h)
+
+                    indicators = await self.indicator_fetcher.fetch_indicators(symbol)
+                    if not indicators:
+                        continue
+
+                    # 获取历史数据用于计算百分位
+                    trades_history = await self.db.get_trades(symbol, hours=window_hours)
+                    liqs_history = await self.db.get_liquidations(symbol, hours=window_hours)
+
+                    # 按小时聚合历史 flow 数据
+                    flow_history: list[float] = []
+                    hour_buckets: dict[int, list[float]] = {}
+                    for t in trades_history:
+                        hour = t.timestamp // 3600000
+                        if hour not in hour_buckets:
+                            hour_buckets[hour] = []
+                        net = t.value_usd if t.side == "buy" else -t.value_usd
+                        hour_buckets[hour].append(net)
+                    for nets in hour_buckets.values():
+                        flow_history.append(abs(sum(nets)))
+
+                    # 按小时聚合历史爆仓数据
+                    liq_history: list[float] = []
+                    liq_buckets: dict[int, float] = {}
+                    for liq in liqs_history:
+                        hour = liq.timestamp // 3600000
+                        liq_buckets[hour] = liq_buckets.get(hour, 0) + liq.value_usd
+                    liq_history = list(liq_buckets.values())
+
+                    # 计算各维度百分位
                     percentiles: dict[str, float] = {
-                        "主力资金": 50.0,
-                        "OI变化": 50.0,
-                        "爆仓": 50.0,
-                        "资金费率": 50.0,
-                        "多空比": 50.0,
+                        "主力资金": calculate_percentile(flow.net, flow_history),
+                        "OI变化": calculate_percentile(oi_change, [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]),
+                        "爆仓": calculate_percentile(liq_stats.total, liq_history),
+                        "资金费率": calculate_percentile(
+                            indicators.funding_rate, [-0.01, 0, 0.01, 0.02, 0.03, 0.05]
+                        ),
+                        "多空比": calculate_percentile(
+                            indicators.long_short_ratio, [0.8, 0.9, 1.0, 1.1, 1.2, 1.3]
+                        ),
                     }
 
                     # 检查分级告警
@@ -494,6 +588,7 @@ class CryptoMonitor:
         tasks = [
             asyncio.create_task(self._scheduled_report()),
             asyncio.create_task(self._fetch_indicators()),
+            asyncio.create_task(self._fetch_long_short_ratio()),
             asyncio.create_task(self._check_alerts()),
             asyncio.create_task(self._check_insight_alerts()),
             asyncio.create_task(self._check_tiered_alerts()),

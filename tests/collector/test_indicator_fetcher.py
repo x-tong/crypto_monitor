@@ -1,5 +1,5 @@
 # tests/collector/test_indicator_fetcher.py
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -25,11 +25,9 @@ async def test_fetch_all_oi():
     mock_client = MagicMock()
     mock_client.get_open_interest = AsyncMock(return_value=mock_oi)
     mock_client.get_klines = AsyncMock(return_value=[mock_kline])
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock()
 
-    with patch.object(fetcher, "_client", mock_client):
-        results = await fetcher.fetch_all_oi()
+    fetcher._client = mock_client
+    results = await fetcher.fetch_all_oi()
 
     assert len(results) == 1
     assert results[0].open_interest == 50000.0
@@ -62,11 +60,9 @@ async def test_fetch_indicators():
     mock_client.get_funding_rate = AsyncMock(return_value=mock_funding)
     mock_client.get_klines = AsyncMock(return_value=[mock_kline])
     mock_client.get_global_long_short_ratio = AsyncMock(return_value=mock_ls)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock()
 
-    with patch.object(fetcher, "_client", mock_client):
-        result = await fetcher.fetch_indicators("BTC/USDT:USDT")
+    fetcher._client = mock_client
+    result = await fetcher.fetch_indicators("BTC/USDT:USDT")
 
     assert result is not None
     assert result.funding_rate == 0.01  # 0.0001 * 100
@@ -112,11 +108,9 @@ async def test_fetch_market_indicators():
     mock_client.get_top_long_short_position_ratio = AsyncMock(return_value=mock_top_position)
     mock_client.get_global_long_short_ratio = AsyncMock(return_value=mock_global)
     mock_client.get_taker_long_short_ratio = AsyncMock(return_value=mock_taker)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock()
 
-    with patch.object(fetcher, "_client", mock_client):
-        result = await fetcher.fetch_market_indicators("BTC/USDT:USDT")
+    fetcher._client = mock_client
+    result = await fetcher.fetch_market_indicators("BTC/USDT:USDT")
 
     assert result is not None
     assert result.top_account_ratio == 1.5

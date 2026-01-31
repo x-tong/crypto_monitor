@@ -55,11 +55,20 @@ class BinanceTradesCollector(BaseCollector):
         # 转换 symbol 格式: BTC/USDT:USDT -> BTCUSDT
         ws_symbol = self.symbol.replace("/", "").replace(":USDT", "")
 
+        # 指数退避参数
+        base_delay = 1.0
+        max_delay = 60.0
+        current_delay = base_delay
+
         while self.running:
             try:
                 await self._client.subscribe_agg_trades(ws_symbol, self._handle_trade)
+                # 连接成功后重置延迟
+                current_delay = base_delay
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Binance trades error: {e}")
-                await asyncio.sleep(5)
+                logger.error(f"Binance trades error: {e}, reconnecting in {current_delay:.1f}s")
+                await asyncio.sleep(current_delay)
+                # 指数退避，最大 60 秒
+                current_delay = min(current_delay * 2, max_delay)

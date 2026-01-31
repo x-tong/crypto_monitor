@@ -78,6 +78,11 @@ class BinanceLiquidationCollector(BaseCollector):
             logger.warning(f"Failed to parse liquidation message: {message}")
 
     async def _run(self) -> None:
+        # 指数退避参数
+        base_delay = 1.0
+        max_delay = 60.0
+        current_delay = base_delay
+
         await self.connect()
         assert self.ws is not None
 
@@ -85,12 +90,21 @@ class BinanceLiquidationCollector(BaseCollector):
             try:
                 message = await self.ws.recv()
                 await self._process_message(message)
+                # 成功接收消息后重置延迟
+                current_delay = base_delay
             except asyncio.CancelledError:
                 break
             except websockets.ConnectionClosed:
-                logger.warning("Binance liquidation WS disconnected, reconnecting...")
-                await asyncio.sleep(5)
-                await self.connect()
+                logger.warning(
+                    f"Binance liquidation WS disconnected, reconnecting in {current_delay:.1f}s"
+                )
+                await asyncio.sleep(current_delay)
+                current_delay = min(current_delay * 2, max_delay)
+                try:
+                    await self.connect()
+                except Exception as e:
+                    logger.error(f"Failed to reconnect: {e}")
             except Exception as e:
-                logger.error(f"Binance liquidation error: {e}")
-                await asyncio.sleep(5)
+                logger.error(f"Binance liquidation error: {e}, retrying in {current_delay:.1f}s")
+                await asyncio.sleep(current_delay)
+                current_delay = min(current_delay * 2, max_delay)

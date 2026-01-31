@@ -34,13 +34,24 @@ class LongShortIndicators:
 class IndicatorFetcher:
     def __init__(self, symbols: list[str]):
         self.symbols = symbols
-        self._client = BinanceClient()
+        self._client: BinanceClient | None = None
 
     async def init(self) -> None:
-        pass  # BinanceClient 使用 async with 管理连接
+        """初始化持久化的 HTTP session"""
+        self._client = BinanceClient()
+        await self._client.__aenter__()
 
     async def close(self) -> None:
-        pass  # BinanceClient 使用 async with 管理连接
+        """关闭 HTTP session"""
+        if self._client:
+            await self._client.__aexit__(None, None, None)
+            self._client = None
+
+    def _get_client(self) -> BinanceClient:
+        """获取 client，确保已初始化"""
+        if self._client is None:
+            raise RuntimeError("IndicatorFetcher not initialized. Call init() first.")
+        return self._client
 
     def _to_ws_symbol(self, symbol: str) -> str:
         """转换 symbol 格式: BTC/USDT:USDT -> BTCUSDT"""
@@ -49,13 +60,13 @@ class IndicatorFetcher:
     async def fetch_all_oi(self) -> list[OISnapshot]:
         """获取所有币种的 OI"""
         results: list[OISnapshot] = []
+        client = self._get_client()
 
         for symbol in self.symbols:
             try:
                 ws_symbol = self._to_ws_symbol(symbol)
-                async with self._client as client:
-                    oi = await client.get_open_interest(ws_symbol)
-                    klines = await client.get_klines(ws_symbol, "1h", limit=1)
+                oi = await client.get_open_interest(ws_symbol)
+                klines = await client.get_klines(ws_symbol, "1h", limit=1)
 
                 price = klines[0].close if klines else 0
                 oi_usd = oi.open_interest * price
@@ -79,11 +90,11 @@ class IndicatorFetcher:
         """获取基础指标"""
         try:
             ws_symbol = self._to_ws_symbol(symbol)
+            client = self._get_client()
 
-            async with self._client as client:
-                funding = await client.get_funding_rate(ws_symbol)
-                klines = await client.get_klines(ws_symbol, "1h", limit=1)
-                global_ls = await client.get_global_long_short_ratio(ws_symbol, "1h")
+            funding = await client.get_funding_rate(ws_symbol)
+            klines = await client.get_klines(ws_symbol, "1h", limit=1)
+            global_ls = await client.get_global_long_short_ratio(ws_symbol, "1h")
 
             price = klines[0].close if klines else 0
 
@@ -101,12 +112,12 @@ class IndicatorFetcher:
         """获取 4 种多空比指标"""
         try:
             ws_symbol = self._to_ws_symbol(symbol)
+            client = self._get_client()
 
-            async with self._client as client:
-                global_ls = await client.get_global_long_short_ratio(ws_symbol, "1h")
-                top_account = await client.get_top_long_short_account_ratio(ws_symbol, "1h")
-                top_position = await client.get_top_long_short_position_ratio(ws_symbol, "1h")
-                taker = await client.get_taker_long_short_ratio(ws_symbol, "1h")
+            global_ls = await client.get_global_long_short_ratio(ws_symbol, "1h")
+            top_account = await client.get_top_long_short_account_ratio(ws_symbol, "1h")
+            top_position = await client.get_top_long_short_position_ratio(ws_symbol, "1h")
+            taker = await client.get_taker_long_short_ratio(ws_symbol, "1h")
 
             return LongShortIndicators(
                 global_ratio=global_ls.long_short_ratio,
@@ -122,12 +133,12 @@ class IndicatorFetcher:
         """获取市场指标（用于洞察报告）"""
         try:
             ws_symbol = self._to_ws_symbol(symbol)
+            client = self._get_client()
 
-            async with self._client as client:
-                top_account = await client.get_top_long_short_account_ratio(ws_symbol, "5m")
-                top_position = await client.get_top_long_short_position_ratio(ws_symbol, "5m")
-                global_account = await client.get_global_long_short_ratio(ws_symbol, "5m")
-                taker = await client.get_taker_long_short_ratio(ws_symbol, "5m")
+            top_account = await client.get_top_long_short_account_ratio(ws_symbol, "5m")
+            top_position = await client.get_top_long_short_position_ratio(ws_symbol, "5m")
+            global_account = await client.get_global_long_short_ratio(ws_symbol, "5m")
+            taker = await client.get_taker_long_short_ratio(ws_symbol, "5m")
 
             return MarketIndicator(
                 id=None,
@@ -145,8 +156,6 @@ class IndicatorFetcher:
     async def fetch_open_interest(self, symbol: str) -> float:
         """获取持仓量"""
         ws_symbol = self._to_ws_symbol(symbol)
-
-        async with self._client as client:
-            oi = await client.get_open_interest(ws_symbol)
-
+        client = self._get_client()
+        oi = await client.get_open_interest(ws_symbol)
         return oi.open_interest
