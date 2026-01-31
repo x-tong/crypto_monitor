@@ -52,13 +52,34 @@ class IndicatorFetcher:
                 return None
 
             data: dict[str, Any] = await ex.fetch_open_interest(symbol)
+
+            oi_amount = data.get("openInterestAmount")
+            oi_value = data.get("openInterestValue")
+            timestamp = data.get("timestamp")
+
+            if oi_amount is None or timestamp is None:
+                logger.warning(
+                    f"Incomplete OI data from {exchange} for {symbol}: "
+                    f"amount={oi_amount}, ts={timestamp}"
+                )
+                return None
+
+            # Calculate USD value from price if not provided (e.g., Binance)
+            if oi_value is None:
+                ticker: dict[str, Any] = await ex.fetch_ticker(symbol)
+                price = ticker.get("last")
+                if price is None:
+                    logger.warning(f"Cannot get price to calculate OI value for {symbol}")
+                    return None
+                oi_value = oi_amount * price
+
             return OISnapshot(
                 id=None,
                 exchange=exchange,
                 symbol=symbol,
-                timestamp=data["timestamp"],
-                open_interest=data["openInterestAmount"],
-                open_interest_usd=data["openInterestValue"],
+                timestamp=timestamp,
+                open_interest=oi_amount,
+                open_interest_usd=oi_value,
             )
         except Exception as e:
             logger.error(f"Failed to fetch OI from {exchange}: {e}")
@@ -82,14 +103,11 @@ class IndicatorFetcher:
             funding: dict[str, Any] = await self.binance.fetch_funding_rate(symbol)
             funding_rate = funding.get("fundingRate", 0) * 100  # Convert to percentage
 
-            # Fetch long/short ratio (global accounts)
-            raw_symbol = symbol.replace("/", "").replace(":USDT", "")
-            ls_data: list[
-                dict[str, Any]
-            ] = await self.binance.fapi_public_get_globallongshortaccountratio(
-                {"symbol": raw_symbol, "period": "5m", "limit": 1}
+            # Fetch long/short ratio using history method (current ratio not supported)
+            ls_history: list[dict[str, Any]] = await self.binance.fetch_long_short_ratio_history(
+                symbol, "5m", limit=1
             )
-            long_short_ratio = float(ls_data[0]["longShortRatio"]) if ls_data else 1.0
+            long_short_ratio = float(ls_history[-1]["longShortRatio"]) if ls_history else 1.0
 
             # Fetch spot price
             spot_ticker: dict[str, Any] = await self.binance_spot.fetch_ticker(

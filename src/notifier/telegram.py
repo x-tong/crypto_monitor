@@ -4,10 +4,50 @@ import re
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from telegram import Bot, Update
+from telegram import Bot, BotCommand, Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 logger = logging.getLogger(__name__)
+
+WELCOME_MESSAGE = """
+🔔 <b>Crypto Monitor</b> - BTC/ETH 永续合约监控
+
+<b>功能：</b>
+• 大单资金流向追踪
+• 持仓量(OI)变化监控
+• 爆仓数据聚合
+• 关键价位突破提醒
+• 定时市场报告
+
+输入 /help 查看所有命令
+"""
+
+HELP_MESSAGE = """
+📖 <b>命令列表</b>
+
+<b>📊 市场数据</b>
+/report [BTC|ETH] - 获取市场报告
+/status - 查看系统状态
+
+<b>🔔 价位提醒</b>
+/watch BTC 100000 - 添加价位监控
+/unwatch BTC 100000 - 取消价位监控
+/list - 查看所有监控价位
+
+<b>💡 示例</b>
+• /report BTC - BTC 市场报告
+• /watch ETH 2500 - ETH 跌破/突破 2500 时提醒
+"""
+
+BOT_COMMANDS = [
+    BotCommand("start", "开始使用"),
+    BotCommand("help", "查看帮助"),
+    BotCommand("report", "获取市场报告"),
+    BotCommand("status", "系统状态"),
+    BotCommand("watch", "添加价位监控"),
+    BotCommand("unwatch", "取消价位监控"),
+    BotCommand("list", "查看监控列表"),
+]
 
 
 class TelegramNotifier:
@@ -99,7 +139,19 @@ class TelegramNotifier:
         else:
             await update.message.reply_text("系统运行中")
 
+    async def _handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not update.message:
+            return
+        await update.message.reply_text(WELCOME_MESSAGE, parse_mode="HTML")
+
+    async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not update.message:
+            return
+        await update.message.reply_text(HELP_MESSAGE, parse_mode="HTML")
+
     def setup_handlers(self, app: Application) -> None:  # type: ignore[type-arg]
+        app.add_handler(CommandHandler("start", self._handle_start))
+        app.add_handler(CommandHandler("help", self._handle_help))
         app.add_handler(CommandHandler("watch", self._handle_watch))
         app.add_handler(CommandHandler("unwatch", self._handle_unwatch))
         app.add_handler(CommandHandler("list", self._handle_list))
@@ -111,6 +163,10 @@ class TelegramNotifier:
         self.setup_handlers(self.app)
         await self.app.initialize()
         await self.app.start()
+
+        # Set bot command menu
+        await self.bot.set_my_commands(BOT_COMMANDS)
+
         if self.app.updater:
             await self.app.updater.start_polling()
 
