@@ -1,11 +1,9 @@
 # src/collector/indicator_fetcher.py
-import asyncio
 import logging
+import time
 from dataclasses import dataclass
-from typing import Any
 
-import ccxt.async_support as ccxt
-
+from src.client.binance import BinanceClient
 from src.storage.models import MarketIndicator, OISnapshot
 
 logger = logging.getLogger(__name__)
@@ -25,157 +23,130 @@ class Indicators:
         return (self.futures_price - self.spot_price) / self.spot_price * 100
 
 
+@dataclass
+class LongShortIndicators:
+    global_ratio: float
+    top_account_ratio: float
+    top_position_ratio: float
+    taker_ratio: float
+
+
 class IndicatorFetcher:
     def __init__(self, symbols: list[str]):
         self.symbols = symbols
-        self.binance: ccxt.binanceusdm | None = None
-        self.binance_spot: ccxt.binance | None = None
-        self.okx: ccxt.okx | None = None
+        self._client = BinanceClient()
 
     async def init(self) -> None:
-        self.binance = ccxt.binanceusdm()
-        self.binance_spot = ccxt.binance()
-        self.okx = ccxt.okx()
+        pass  # BinanceClient 使用 async with 管理连接
 
     async def close(self) -> None:
-        if self.binance:
-            await self.binance.close()
-        if self.binance_spot:
-            await self.binance_spot.close()
-        if self.okx:
-            await self.okx.close()
+        pass  # BinanceClient 使用 async with 管理连接
 
-    async def _fetch_oi(self, exchange: str, symbol: str) -> OISnapshot | None:
-        try:
-            ex = self.binance if exchange == "binance" else self.okx
-            if not ex:
-                return None
-
-            data: dict[str, Any] = await ex.fetch_open_interest(symbol)
-
-            oi_amount = data.get("openInterestAmount")
-            oi_value = data.get("openInterestValue")
-            timestamp = data.get("timestamp")
-
-            if oi_amount is None or timestamp is None:
-                logger.warning(
-                    f"Incomplete OI data from {exchange} for {symbol}: "
-                    f"amount={oi_amount}, ts={timestamp}"
-                )
-                return None
-
-            # Calculate USD value from price if not provided (e.g., Binance)
-            if oi_value is None:
-                ticker: dict[str, Any] = await ex.fetch_ticker(symbol)
-                price = ticker.get("last")
-                if price is None:
-                    logger.warning(f"Cannot get price to calculate OI value for {symbol}")
-                    return None
-                oi_value = oi_amount * price
-
-            return OISnapshot(
-                id=None,
-                exchange=exchange,
-                symbol=symbol,
-                timestamp=timestamp,
-                open_interest=oi_amount,
-                open_interest_usd=oi_value,
-            )
-        except Exception as e:
-            logger.error(f"Failed to fetch OI from {exchange}: {e}")
-            return None
+    def _to_ws_symbol(self, symbol: str) -> str:
+        """转换 symbol 格式: BTC/USDT:USDT -> BTCUSDT"""
+        return symbol.replace("/", "").replace(":USDT", "")
 
     async def fetch_all_oi(self) -> list[OISnapshot]:
-        tasks = []
-        for symbol in self.symbols:
-            tasks.append(self._fetch_oi("binance", symbol))
-            tasks.append(self._fetch_oi("okx", symbol))
+        """获取所有币种的 OI"""
+        results: list[OISnapshot] = []
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        return [r for r in results if isinstance(r, OISnapshot)]
+        for symbol in self.symbols:
+            try:
+                ws_symbol = self._to_ws_symbol(symbol)
+                async with self._client as client:
+                    oi = await client.get_open_interest(ws_symbol)
+                    klines = await client.get_klines(ws_symbol, "1h", limit=1)
+
+                price = klines[0].close if klines else 0
+                oi_usd = oi.open_interest * price
+
+                results.append(
+                    OISnapshot(
+                        id=None,
+                        exchange="binance",
+                        symbol=symbol,
+                        timestamp=oi.timestamp,
+                        open_interest=oi.open_interest,
+                        open_interest_usd=oi_usd,
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Failed to fetch OI for {symbol}: {e}")
+
+        return results
 
     async def fetch_indicators(self, symbol: str) -> Indicators | None:
+        """获取基础指标"""
         try:
-            assert self.binance is not None
-            assert self.binance_spot is not None
+            ws_symbol = self._to_ws_symbol(symbol)
 
-            # Fetch funding rate
-            funding: dict[str, Any] = await self.binance.fetch_funding_rate(symbol)
-            funding_rate = funding.get("fundingRate", 0) * 100  # Convert to percentage
+            async with self._client as client:
+                funding = await client.get_funding_rate(ws_symbol)
+                klines = await client.get_klines(ws_symbol, "1h", limit=1)
+                global_ls = await client.get_global_long_short_ratio(ws_symbol, "1h")
 
-            # Fetch long/short ratio using history method (current ratio not supported)
-            ls_history: list[dict[str, Any]] = await self.binance.fetch_long_short_ratio_history(
-                symbol, "5m", limit=1
-            )
-            long_short_ratio = float(ls_history[-1]["longShortRatio"]) if ls_history else 1.0
-
-            # Fetch spot price
-            spot_ticker: dict[str, Any] = await self.binance_spot.fetch_ticker(
-                symbol.replace(":USDT", "")
-            )
-            spot_price = spot_ticker["last"]
-
-            # Fetch futures price
-            futures_ticker: dict[str, Any] = await self.binance.fetch_ticker(symbol)
-            futures_price = futures_ticker["last"]
+            price = klines[0].close if klines else 0
 
             return Indicators(
-                funding_rate=funding_rate,
-                long_short_ratio=long_short_ratio,
-                spot_price=spot_price,
-                futures_price=futures_price,
+                funding_rate=funding.funding_rate * 100,  # 转为百分比
+                long_short_ratio=global_ls.long_short_ratio,
+                spot_price=price,  # 简化：使用期货价格
+                futures_price=price,
             )
         except Exception as e:
             logger.error(f"Failed to fetch indicators for {symbol}: {e}")
             return None
 
-    async def fetch_market_indicators(self, symbol: str) -> MarketIndicator | None:
+    async def fetch_long_short_indicators(self, symbol: str) -> LongShortIndicators | None:
+        """获取 4 种多空比指标"""
         try:
-            assert self.binance is not None
+            ws_symbol = self._to_ws_symbol(symbol)
 
-            raw_symbol = symbol.replace("/", "").replace(":USDT", "")
+            async with self._client as client:
+                global_ls = await client.get_global_long_short_ratio(ws_symbol, "1h")
+                top_account = await client.get_top_long_short_account_ratio(ws_symbol, "1h")
+                top_position = await client.get_top_long_short_position_ratio(ws_symbol, "1h")
+                taker = await client.get_taker_long_short_ratio(ws_symbol, "1h")
 
-            # 大户账户多空比 (使用现有的 fetch_long_short_ratio_history)
-            top_account_data = await self.binance.fetch_long_short_ratio_history(
-                symbol, "5m", limit=1
+            return LongShortIndicators(
+                global_ratio=global_ls.long_short_ratio,
+                top_account_ratio=top_account.long_short_ratio,
+                top_position_ratio=top_position.long_short_ratio,
+                taker_ratio=taker.buy_sell_ratio,
             )
-            top_account_ratio = (
-                float(top_account_data[-1]["longShortRatio"]) if top_account_data else 1.0
-            )
+        except Exception as e:
+            logger.error(f"Failed to fetch long short indicators for {symbol}: {e}")
+            return None
 
-            # 大户持仓多空比
-            top_position_data = await self.binance.fapiDataGetTopLongShortPositionRatio(
-                {"symbol": raw_symbol, "period": "5m", "limit": 1}
-            )
-            top_position_ratio = (
-                float(top_position_data[0]["longShortRatio"]) if top_position_data else 1.0
-            )
+    async def fetch_market_indicators(self, symbol: str) -> MarketIndicator | None:
+        """获取市场指标（用于洞察报告）"""
+        try:
+            ws_symbol = self._to_ws_symbol(symbol)
 
-            # 散户账户多空比 (全局账户)
-            global_account_data = await self.binance.fapiDataGetGlobalLongShortAccountRatio(
-                {"symbol": raw_symbol, "period": "5m", "limit": 1}
-            )
-            global_account_ratio = (
-                float(global_account_data[0]["longShortRatio"]) if global_account_data else 1.0
-            )
-
-            # 主动买卖比
-            taker_data = await self.binance.fapiDataGetTakerlongshortRatio(
-                {"symbol": raw_symbol, "period": "5m", "limit": 1}
-            )
-            taker_ratio = float(taker_data[0]["buySellRatio"]) if taker_data else 1.0
-
-            import time
+            async with self._client as client:
+                top_account = await client.get_top_long_short_account_ratio(ws_symbol, "5m")
+                top_position = await client.get_top_long_short_position_ratio(ws_symbol, "5m")
+                global_account = await client.get_global_long_short_ratio(ws_symbol, "5m")
+                taker = await client.get_taker_long_short_ratio(ws_symbol, "5m")
 
             return MarketIndicator(
                 id=None,
                 symbol=symbol,
                 timestamp=int(time.time() * 1000),
-                top_account_ratio=top_account_ratio,
-                top_position_ratio=top_position_ratio,
-                global_account_ratio=global_account_ratio,
-                taker_buy_sell_ratio=taker_ratio,
+                top_account_ratio=top_account.long_short_ratio,
+                top_position_ratio=top_position.long_short_ratio,
+                global_account_ratio=global_account.long_short_ratio,
+                taker_buy_sell_ratio=taker.buy_sell_ratio,
             )
         except Exception as e:
             logger.error(f"Failed to fetch market indicators for {symbol}: {e}")
             return None
+
+    async def fetch_open_interest(self, symbol: str) -> float:
+        """获取持仓量"""
+        ws_symbol = self._to_ws_symbol(symbol)
+
+        async with self._client as client:
+            oi = await client.get_open_interest(ws_symbol)
+
+        return oi.open_interest

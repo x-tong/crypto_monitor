@@ -4,8 +4,7 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-import ccxt.pro as ccxtpro
-
+from src.client.binance import BinanceClient
 from src.storage.models import Trade
 
 from .base import BaseCollector
@@ -23,52 +22,42 @@ class BinanceTradesCollector(BaseCollector):
         super().__init__(symbol)
         self.threshold_usd = threshold_usd
         self.on_trade = on_trade
-        self.exchange: ccxtpro.binanceusdm | None = None
+        self._client = BinanceClient()
 
     async def connect(self) -> None:
-        self.exchange = ccxtpro.binanceusdm()
+        pass  # WebSocket 连接在 subscribe 时建立
 
     async def disconnect(self) -> None:
-        if self.exchange:
-            await self.exchange.close()
+        pass  # WebSocket 连接在 subscribe 结束时关闭
 
-    def _parse_trade(self, trade: dict[str, Any]) -> Trade | None:
-        price = float(trade["price"])
-        amount = float(trade["amount"])
-        value_usd = price * amount
+    async def _process_message(self, message: Any) -> None:
+        pass  # 不再使用，由 _handle_trade 处理
 
+    async def _handle_trade(self, trade_data: dict[str, Any]) -> None:
+        """处理交易数据"""
+        value_usd = trade_data["price"] * trade_data["quantity"]
         if value_usd < self.threshold_usd:
-            return None
+            return
 
-        # 确定方向: m=True 表示卖方是 taker (sell), m=False 表示买方是 taker (buy)
-        is_buyer_maker = trade.get("info", {}).get("m", True)
-        side = "sell" if is_buyer_maker else "buy"
-
-        return Trade(
+        trade = Trade(
             id=None,
             exchange="binance",
-            symbol=trade["symbol"],
-            timestamp=trade["timestamp"],
-            price=price,
-            amount=amount,
-            side=side,
+            symbol=self.symbol,
+            timestamp=trade_data["timestamp"],
+            price=trade_data["price"],
+            amount=trade_data["quantity"],
+            side=trade_data["side"],
             value_usd=value_usd,
         )
-
-    async def _process_message(self, trades: list[dict[str, Any]]) -> None:
-        for trade_data in trades:
-            trade = self._parse_trade(trade_data)
-            if trade:
-                await self.on_trade(trade)
+        await self.on_trade(trade)
 
     async def _run(self) -> None:
-        await self.connect()
-        assert self.exchange is not None
+        # 转换 symbol 格式: BTC/USDT:USDT -> BTCUSDT
+        ws_symbol = self.symbol.replace("/", "").replace(":USDT", "")
 
         while self.running:
             try:
-                trades = await self.exchange.watch_trades(self.symbol)
-                await self._process_message(trades)
+                await self._client.subscribe_agg_trades(ws_symbol, self._handle_trade)
             except asyncio.CancelledError:
                 break
             except Exception as e:

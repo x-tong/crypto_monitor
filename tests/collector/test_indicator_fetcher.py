@@ -1,116 +1,116 @@
 # tests/collector/test_indicator_fetcher.py
-from unittest.mock import AsyncMock, MagicMock
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from src.collector.indicator_fetcher import IndicatorFetcher
+from src.client.models import OpenInterest, Kline, FundingRate, LongShortRatio, TakerRatio
 
 
-async def test_fetch_oi():
-    from src.collector.indicator_fetcher import IndicatorFetcher
-
+@pytest.mark.asyncio
+async def test_fetch_all_oi():
     fetcher = IndicatorFetcher(symbols=["BTC/USDT:USDT"])
 
-    # Mock ccxt exchange
-    mock_exchange = MagicMock()
-    mock_exchange.fetch_open_interest = AsyncMock(
-        return_value={
-            "symbol": "BTC/USDT:USDT",
-            "openInterestAmount": 50000.0,
-            "openInterestValue": 5000000000.0,
-            "timestamp": 1706600000000,
-        }
+    mock_oi = OpenInterest(symbol="BTCUSDT", open_interest=50000.0, timestamp=1706600000000)
+    mock_kline = Kline(
+        open_time=1706600000000,
+        open=100000.0,
+        high=100500.0,
+        low=99500.0,
+        close=100000.0,
+        volume=1000.0,
+        close_time=1706603599999,
     )
 
-    fetcher.binance = mock_exchange
+    mock_client = MagicMock()
+    mock_client.get_open_interest = AsyncMock(return_value=mock_oi)
+    mock_client.get_klines = AsyncMock(return_value=[mock_kline])
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock()
 
-    result = await fetcher._fetch_oi("binance", "BTC/USDT:USDT")
+    with patch.object(fetcher, "_client", mock_client):
+        results = await fetcher.fetch_all_oi()
+
+    assert len(results) == 1
+    assert results[0].open_interest == 50000.0
+    assert results[0].open_interest_usd == 5000000000.0  # 50000 * 100000
+
+
+@pytest.mark.asyncio
+async def test_fetch_indicators():
+    fetcher = IndicatorFetcher(symbols=["BTC/USDT:USDT"])
+
+    mock_funding = FundingRate(symbol="BTCUSDT", funding_rate=0.0001, funding_time=1706600000000)
+    mock_kline = Kline(
+        open_time=1706600000000,
+        open=100000.0,
+        high=100500.0,
+        low=99500.0,
+        close=100000.0,
+        volume=1000.0,
+        close_time=1706603599999,
+    )
+    mock_ls = LongShortRatio(
+        symbol="BTCUSDT",
+        long_ratio=0.55,
+        short_ratio=0.45,
+        long_short_ratio=1.22,
+        timestamp=1706600000000,
+    )
+
+    mock_client = MagicMock()
+    mock_client.get_funding_rate = AsyncMock(return_value=mock_funding)
+    mock_client.get_klines = AsyncMock(return_value=[mock_kline])
+    mock_client.get_global_long_short_ratio = AsyncMock(return_value=mock_ls)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock()
+
+    with patch.object(fetcher, "_client", mock_client):
+        result = await fetcher.fetch_indicators("BTC/USDT:USDT")
 
     assert result is not None
-    assert result.open_interest == 50000.0
-    assert result.open_interest_usd == 5000000000.0
+    assert result.funding_rate == 0.01  # 0.0001 * 100
+    assert result.long_short_ratio == 1.22
+    assert result.futures_price == 100000.0
 
 
-async def test_fetch_oi_calculates_value_from_price():
-    """When openInterestValue is None, calculate from amount * price."""
-    from src.collector.indicator_fetcher import IndicatorFetcher
-
-    fetcher = IndicatorFetcher(symbols=["BTC/USDT:USDT"])
-
-    mock_exchange = MagicMock()
-    mock_exchange.fetch_open_interest = AsyncMock(
-        return_value={
-            "symbol": "BTC/USDT:USDT",
-            "openInterestAmount": 100.0,
-            "openInterestValue": None,  # Binance doesn't return this
-            "timestamp": 1706600000000,
-        }
-    )
-    mock_exchange.fetch_ticker = AsyncMock(
-        return_value={"last": 50000.0}  # Price for calculation
-    )
-
-    fetcher.binance = mock_exchange
-
-    result = await fetcher._fetch_oi("binance", "BTC/USDT:USDT")
-    assert result is not None
-    assert result.open_interest == 100.0
-    assert result.open_interest_usd == 5000000.0  # 100 * 50000
-
-
-async def test_fetch_oi_returns_none_when_amount_missing():
-    """When openInterestAmount is None, return None."""
-    from src.collector.indicator_fetcher import IndicatorFetcher
-
-    fetcher = IndicatorFetcher(symbols=["BTC/USDT:USDT"])
-
-    mock_exchange = MagicMock()
-    mock_exchange.fetch_open_interest = AsyncMock(
-        return_value={
-            "symbol": "BTC/USDT:USDT",
-            "openInterestAmount": None,
-            "openInterestValue": 5000000.0,
-            "timestamp": 1706600000000,
-        }
-    )
-
-    fetcher.binance = mock_exchange
-
-    result = await fetcher._fetch_oi("binance", "BTC/USDT:USDT")
-    assert result is None
-
-
+@pytest.mark.asyncio
 async def test_fetch_market_indicators():
-    from unittest.mock import AsyncMock, MagicMock
-
-    from src.collector.indicator_fetcher import IndicatorFetcher
-
     fetcher = IndicatorFetcher(symbols=["BTC/USDT:USDT"])
 
-    mock_exchange = MagicMock()
-
-    # Mock 大户账户多空比
-    mock_exchange.fetch_long_short_ratio_history = AsyncMock(
-        return_value=[{"longShortRatio": 1.5, "timestamp": 1706600000000}]
+    mock_top_account = LongShortRatio(
+        symbol="BTCUSDT", long_ratio=0.6, short_ratio=0.4, long_short_ratio=1.5, timestamp=1706600000000
+    )
+    mock_top_position = LongShortRatio(
+        symbol="BTCUSDT", long_ratio=0.62, short_ratio=0.38, long_short_ratio=1.6, timestamp=1706600000000
+    )
+    mock_global = LongShortRatio(
+        symbol="BTCUSDT", long_ratio=0.47, short_ratio=0.53, long_short_ratio=0.9, timestamp=1706600000000
+    )
+    mock_taker = TakerRatio(
+        symbol="BTCUSDT", buy_sell_ratio=1.1, buy_vol=5000.0, sell_vol=4545.0, timestamp=1706600000000
     )
 
-    # Mock 大户持仓多空比
-    mock_exchange.fapiDataGetTopLongShortPositionRatio = AsyncMock(
-        return_value=[{"longShortRatio": "1.6", "timestamp": "1706600000000"}]
-    )
+    mock_client = MagicMock()
+    mock_client.get_top_long_short_account_ratio = AsyncMock(return_value=mock_top_account)
+    mock_client.get_top_long_short_position_ratio = AsyncMock(return_value=mock_top_position)
+    mock_client.get_global_long_short_ratio = AsyncMock(return_value=mock_global)
+    mock_client.get_taker_long_short_ratio = AsyncMock(return_value=mock_taker)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock()
 
-    # Mock 散户账户多空比
-    mock_exchange.fapiDataGetGlobalLongShortAccountRatio = AsyncMock(
-        return_value=[{"longShortRatio": "0.9", "timestamp": "1706600000000"}]
-    )
-
-    # Mock 主动买卖比
-    mock_exchange.fapiDataGetTakerlongshortRatio = AsyncMock(
-        return_value=[{"buySellRatio": "1.1", "timestamp": "1706600000000"}]
-    )
-
-    fetcher.binance = mock_exchange
-
-    result = await fetcher.fetch_market_indicators("BTC/USDT:USDT")
+    with patch.object(fetcher, "_client", mock_client):
+        result = await fetcher.fetch_market_indicators("BTC/USDT:USDT")
 
     assert result is not None
     assert result.top_account_ratio == 1.5
     assert result.top_position_ratio == 1.6
     assert result.global_account_ratio == 0.9
     assert result.taker_buy_sell_ratio == 1.1
+
+
+@pytest.mark.asyncio
+async def test_to_ws_symbol():
+    fetcher = IndicatorFetcher(symbols=["BTC/USDT:USDT"])
+
+    assert fetcher._to_ws_symbol("BTC/USDT:USDT") == "BTCUSDT"
+    assert fetcher._to_ws_symbol("ETH/USDT:USDT") == "ETHUSDT"
