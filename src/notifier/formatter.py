@@ -35,10 +35,7 @@ def _level(pct: float) -> str:
 def format_report(data: dict[str, Any]) -> str:
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
-    # 判断交易所一致性
     flow_binance = data.get("flow_binance", 0)
-    flow_okx = data.get("flow_okx", 0)
-    consistency = "✓一致" if (flow_binance >= 0) == (flow_okx >= 0) else "⚠️分歧"
 
     price_dir = "↑" if data["price_change_1h"] > 0 else "↓"
     oi_dir = "↑" if data["oi_change_1h"] > 0 else "↓"
@@ -67,7 +64,7 @@ def format_report(data: dict[str, Any]) -> str:
 💰 主力资金 (大单净流向):
   1h: {flow_1h} | 4h: {flow_4h}
   24h: {flow_24h}
-  Binance: {_format_usd_signed(flow_binance)} | OKX: {_format_usd_signed(flow_okx)} {consistency}
+  Binance: {_format_usd_signed(flow_binance)}
 
 ━━━━━━━━━━━━━━━━━━━━
 📈 持仓量 (OI): {_format_usd(data["oi_value"])}
@@ -117,7 +114,6 @@ def format_whale_alert(data: dict[str, Any]) -> str:
 
 1h {direction} {_format_usd(abs(data["flow_1h"]))} {_level(data["flow_1h_pct"])}
   Binance: {_format_usd_signed(data.get("flow_binance", 0))}
-  OKX: {_format_usd_signed(data.get("flow_okx", 0))}
 
 💵 ${data["price"]:,.0f} ({data["price_change_1h"]:+.1f}% 1h)
 ⏰ {now}"""
@@ -151,8 +147,6 @@ def format_insight_report(data: dict[str, Any]) -> str:
     # 资金流向
     flow_1h = _format_usd_signed(data["flow_1h"])
     flow_binance = _format_usd_signed(data["flow_binance"])
-    flow_okx = _format_usd_signed(data["flow_okx"])
-    consistency = "✓一致" if (data["flow_binance"] >= 0) == (data["flow_okx"] >= 0) else "⚠️分歧"
 
     # 爆仓压力
     liq_long_pct = int(data["liq_long_ratio"] * 100)
@@ -209,7 +203,7 @@ def format_insight_report(data: dict[str, Any]) -> str:
 💰 资金动向
   主动买卖比: {taker}
   大单净流向: {flow_line}
-    Binance: {flow_binance} | OKX: {flow_okx} {consistency}
+    Binance: {flow_binance}
 
 ━━━━━━━━━━━━━━━━━━━━
 📈 持仓 & 爆仓

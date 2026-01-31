@@ -15,7 +15,6 @@ from src.alert.price_monitor import check_price_alerts
 from src.collector.binance_liq import BinanceLiquidationCollector
 from src.collector.binance_trades import BinanceTradesCollector
 from src.collector.indicator_fetcher import IndicatorFetcher
-from src.collector.okx_trades import OKXTradesCollector
 from src.config import Config, load_config
 from src.notifier.formatter import format_insight_report, format_report
 from src.notifier.telegram import TelegramNotifier
@@ -51,14 +50,6 @@ class CryptoMonitor:
             if self.config.exchanges.binance.enabled:
                 self.collectors.append(
                     BinanceTradesCollector(
-                        symbol=symbol,
-                        threshold_usd=self.config.thresholds.default_usd,
-                        on_trade=self._on_trade,
-                    )
-                )
-            if self.config.exchanges.okx.enabled:
-                self.collectors.append(
-                    OKXTradesCollector(
                         symbol=symbol,
                         threshold_usd=self.config.thresholds.default_usd,
                         on_trade=self._on_trade,
@@ -173,7 +164,6 @@ class CryptoMonitor:
             "flow_24h": flow_24h.net,
             "flow_24h_pct": 50,
             "flow_binance": flow_1h.by_exchange.get("binance", 0),
-            "flow_okx": flow_1h.by_exchange.get("okx", 0),
             "oi_value": current_oi.open_interest_usd if current_oi else 0,
             "oi_change_1h": oi_change_1h,
             "oi_change_1h_pct": 50,
@@ -287,7 +277,6 @@ class CryptoMonitor:
             "flow_1h": flow_1h.net,
             "flow_1h_pct": 50,
             "flow_binance": flow_1h.by_exchange.get("binance", 0),
-            "flow_okx": flow_1h.by_exchange.get("okx", 0),
             # 持仓 & 爆仓
             "oi_value": current_oi.open_interest_usd if current_oi else 0,
             "oi_change_1h": oi_change_1h,

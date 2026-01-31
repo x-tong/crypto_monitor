@@ -11,7 +11,6 @@ class ExchangeConfig(BaseModel):
 
 class ExchangesConfig(BaseModel):
     binance: ExchangeConfig = ExchangeConfig()
-    okx: ExchangeConfig = ExchangeConfig()
 
 
 class ThresholdsConfig(BaseModel):
