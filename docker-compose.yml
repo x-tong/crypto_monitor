@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  crypto-monitor:
+    build: .
+    container_name: crypto-monitor
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - TZ=UTC

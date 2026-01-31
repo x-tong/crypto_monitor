@@ -1,0 +1,51 @@
+# config.example.yaml
+exchanges:
+  binance:
+    enabled: true
+  okx:
+    enabled: true
+
+symbols:
+  - BTC/USDT:USDT
+  - ETH/USDT:USDT
+
+thresholds:
+  default_usd: 100000
+  percentile: 95
+  update_interval_hours: 1
+
+intervals:
+  oi_fetch_minutes: 5
+  indicator_fetch_minutes: 5
+  report_hours: 8
+  cleanup_hours: 24
+
+alerts:
+  whale_flow:
+    enabled: true
+    threshold_usd: 10000000
+  oi_change:
+    enabled: true
+    threshold_pct: 3
+  liquidation:
+    enabled: true
+    threshold_usd: 20000000
+
+telegram:
+  bot_token: "YOUR_BOT_TOKEN"
+  chat_id: "YOUR_CHAT_ID"
+
+database:
+  path: "data/monitor.db"
+  retention_days: 7
+
+price_alerts:
+  cooldown_minutes: 60
+
+percentile:
+  window_days: 7
+  update_interval_minutes: 60
+
+percentile_levels:
+  normal_below: 75
+  warning_below: 90

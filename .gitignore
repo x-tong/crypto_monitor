@@ -18,6 +18,13 @@ build/
 .venv/
 venv/
 
+# UV
+uv.lock
+
+# Coverage
+.coverage
+htmlcov/
+
 # Data
 data/
 

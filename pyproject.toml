@@ -1,0 +1,46 @@
+[project]
+name = "crypto-monitor"
+version = "0.1.0"
+description = "BTC/ETH perpetual futures market monitor"
+requires-python = ">=3.11"
+dependencies = [
+    "ccxt>=4.0.0",
+    "websockets>=12.0",
+    "python-telegram-bot>=21.0",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "aiosqlite>=0.19.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8",
+    "types-PyYAML>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
