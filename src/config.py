@@ -63,6 +63,25 @@ class PercentileLevelsConfig(BaseModel):
     warning_below: int = 90
 
 
+class DivergenceConfig(BaseModel):
+    mild_percentile: int = 75
+    strong_percentile: int = 90
+
+
+class InsightAlertsConfig(BaseModel):
+    divergence_spike: bool = True
+    whale_flip: bool = True
+    flow_reversal: bool = True
+    flow_threshold_usd: int = 5_000_000
+    cooldown_minutes: int = 30
+
+
+class InsightConfig(BaseModel):
+    enabled: bool = True
+    divergence: DivergenceConfig = DivergenceConfig()
+    alerts: InsightAlertsConfig = InsightAlertsConfig()
+
+
 class Config(BaseModel):
     exchanges: ExchangesConfig = ExchangesConfig()
     symbols: list[str] = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
@@ -74,6 +93,7 @@ class Config(BaseModel):
     price_alerts: PriceAlertsConfig = PriceAlertsConfig()
     percentile: PercentileConfig = PercentileConfig()
     percentile_levels: PercentileLevelsConfig = PercentileLevelsConfig()
+    insight: InsightConfig = InsightConfig()
 
 
 def load_config(path: Path) -> Config:
