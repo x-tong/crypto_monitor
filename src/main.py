@@ -196,6 +196,8 @@ class CryptoMonitor:
 
     async def _generate_insight_report(self, symbol: str) -> str:
         """生成市场洞察报告"""
+        from src.aggregator.percentile import calculate_percentile
+
         # 获取当前和历史市场指标
         current_mi = await self.db.get_latest_market_indicator(symbol)
         history_mi = await self.db.get_market_indicator_history(symbol, hours=24)
@@ -237,7 +239,11 @@ class CryptoMonitor:
 
         current_oi = await self.db.get_latest_oi(symbol)
         past_oi_1h = await self.db.get_oi_at(symbol, hours_ago=1)
-        oi_change_1h = calculate_oi_change(current_oi, past_oi_1h)
+        # OI 变化：如果历史数据不足，返回 0 而非极端值
+        if past_oi_1h and past_oi_1h.open_interest_usd > 0:
+            oi_change_1h = calculate_oi_change(current_oi, past_oi_1h)
+        else:
+            oi_change_1h = 0.0
 
         indicators = await self.indicator_fetcher.fetch_indicators(symbol)
 
@@ -260,40 +266,86 @@ class CryptoMonitor:
         }
         summary = generate_summary(summary_data)
 
+        # 计算百分位所需的历史数据
+        window_hours = self.config.percentile.window_days * 24
+
+        # 从历史市场指标提取各维度历史
+        top_pos_history = [mi.top_position_ratio for mi in history_mi]
+        global_acc_history = [mi.global_account_ratio for mi in history_mi]
+        taker_history = [mi.taker_buy_sell_ratio for mi in history_mi]
+
+        # 获取 flow 历史
+        trades_history = await self.db.get_trades(symbol, hours=window_hours)
+        flow_history: list[float] = []
+        hour_buckets: dict[int, list[float]] = {}
+        for t in trades_history:
+            hour = t.timestamp // 3600000
+            if hour not in hour_buckets:
+                hour_buckets[hour] = []
+            net = t.value_usd if t.side == "buy" else -t.value_usd
+            hour_buckets[hour].append(net)
+        for nets in hour_buckets.values():
+            flow_history.append(sum(nets))
+
+        # 计算 OI 变化历史
+        oi_change_history: list[float] = []
+        for h in range(1, min(window_hours, 48)):
+            oi_h = await self.db.get_oi_at(symbol, hours_ago=h)
+            oi_h_prev = await self.db.get_oi_at(symbol, hours_ago=h + 1)
+            if oi_h and oi_h_prev and oi_h_prev.open_interest_usd > 0:
+                change = (
+                    (oi_h.open_interest_usd - oi_h_prev.open_interest_usd)
+                    / oi_h_prev.open_interest_usd
+                    * 100
+                )
+                oi_change_history.append(change)
+
+        # 计算百分位
+        top_pos_pct = calculate_percentile(current_mi.top_position_ratio, top_pos_history)
+        global_acc_pct = calculate_percentile(current_mi.global_account_ratio, global_acc_history)
+        taker_pct = calculate_percentile(current_mi.taker_buy_sell_ratio, taker_history)
+        flow_pct = calculate_percentile(flow_1h.net, flow_history)
+        oi_pct = calculate_percentile(oi_change_1h, oi_change_history)
+        # 资金费率使用业界标准范围
+        funding_pct = calculate_percentile(
+            indicators.funding_rate if indicators else 0,
+            [-0.01, 0, 0.01, 0.02, 0.03, 0.05],
+        )
+
         # 组装报告数据
         data = {
             "symbol": symbol.split("/")[0],
             "price": indicators.futures_price if indicators else 0,
-            "price_change_1h": 0,  # 需要从历史价格计算
+            "price_change_1h": 0,
             "summary": summary,
             # 大户 vs 散户
             "top_position_ratio": current_mi.top_position_ratio,
             "top_position_change": top_change["diff"],
-            "top_position_pct": 50,  # 需要计算百分位
+            "top_position_pct": top_pos_pct,
             "global_account_ratio": current_mi.global_account_ratio,
             "global_account_change": global_change["diff"],
-            "global_account_pct": 50,
+            "global_account_pct": global_acc_pct,
             "divergence": divergence_result["divergence"],
             "divergence_pct": divergence_result["percentile"],
             "divergence_level": divergence_result["level"],
             # 资金动向
             "taker_ratio": current_mi.taker_buy_sell_ratio,
             "taker_ratio_change": taker_change["diff"],
-            "taker_ratio_pct": 50,
+            "taker_ratio_pct": taker_pct,
             "flow_1h": flow_1h.net,
-            "flow_1h_pct": 50,
+            "flow_1h_pct": flow_pct,
             "flow_binance": flow_1h.by_exchange.get("binance", 0),
             # 持仓 & 爆仓
             "oi_value": current_oi.open_interest_usd if current_oi else 0,
             "oi_change_1h": oi_change_1h,
-            "oi_change_1h_pct": 50,
+            "oi_change_1h_pct": oi_pct,
             "liq_1h_total": liq_stats.total,
             "liq_long_ratio": liq_long_ratio,
             # 情绪指标
             "funding_rate": indicators.funding_rate if indicators else 0,
-            "funding_rate_pct": 50,
+            "funding_rate_pct": funding_pct,
             "spot_perp_spread": indicators.spot_perp_spread if indicators else 0,
-            "spot_perp_spread_pct": 50,
+            "spot_perp_spread_pct": 50,  # 合约溢价暂无历史数据
         }
 
         return format_insight_report(data)
@@ -547,21 +599,24 @@ class CryptoMonitor:
                     )
                     ls_ratio_history = [s["long_short_ratio"] for s in ls_history]
 
+                    # 历史数据不足时跳过（需要至少 10 个数据点才能计算有意义的百分位）
+                    min_history = 10
+                    oi_len, ls_len = len(oi_change_history), len(ls_ratio_history)
+                    if oi_len < min_history or ls_len < min_history:
+                        logger.debug(f"Skip tiered alerts {symbol}: OI={oi_len} LS={ls_len}")
+                        continue
+
                     # 计算各维度百分位
                     percentiles: dict[str, float] = {
                         "主力资金": calculate_percentile(flow.net, flow_history),
-                        "OI变化": calculate_percentile(
-                            oi_change,
-                            oi_change_history if oi_change_history else [0.5, 1.0, 2.0, 3.0],
-                        ),
+                        "OI变化": calculate_percentile(oi_change, oi_change_history),
                         "爆仓": calculate_percentile(liq_stats.total, liq_history),
                         "资金费率": calculate_percentile(
                             indicators.funding_rate,
                             [-0.01, 0, 0.01, 0.02, 0.03, 0.05],  # 业界标准范围
                         ),
                         "多空比": calculate_percentile(
-                            indicators.long_short_ratio,
-                            ls_ratio_history if ls_ratio_history else [0.8, 0.9, 1.0, 1.1, 1.2],
+                            indicators.long_short_ratio, ls_ratio_history
                         ),
                     }
 

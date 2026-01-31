@@ -77,17 +77,13 @@ def test_format_insight_report():
         "symbol": "BTC",
         "price": 83200,
         "price_change_1h": 1.2,
-        "summary": "大户加多，与散户分歧，资金流入",
         # 大户 vs 散户
-        "top_position_ratio": 1.52,
+        "top_position_ratio": 1.52,  # 60% 多
         "top_position_change": 0.12,
         "top_position_pct": 65,
-        "global_account_ratio": 0.88,
+        "global_account_ratio": 0.88,  # 47% 多
         "global_account_change": -0.08,
         "global_account_pct": 58,
-        "divergence": 0.64,
-        "divergence_pct": 92,
-        "divergence_level": "strong",
         # 资金动向
         "taker_ratio": 1.15,
         "taker_ratio_change": 0.05,
@@ -111,11 +107,11 @@ def test_format_insight_report():
     result = format_insight_report(data)
 
     assert "BTC 市场洞察" in result
-    assert "大户加多" in result
-    assert "大户 vs 散户" in result
-    assert "1.52" in result
+    assert "多空对比" in result
+    assert "60% 多" in result  # 大户 1.52 -> 60%
     assert "资金动向" in result
     assert "空头承压" in result
+    assert "各维度正常" in result  # 无异常
 
 
 def test_format_observe_alert():

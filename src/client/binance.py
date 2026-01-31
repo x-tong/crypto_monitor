@@ -233,7 +233,7 @@ class BinanceClient:
         )
         latest = data[0]
         return TakerRatio(
-            symbol=latest["symbol"],
+            symbol=symbol,  # API 不返回 symbol，使用请求参数
             buy_sell_ratio=float(latest["buySellRatio"]),
             buy_vol=float(latest["buyVol"]),
             sell_vol=float(latest["sellVol"]),
