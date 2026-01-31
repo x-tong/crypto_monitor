@@ -138,3 +138,116 @@ async def test_get_funding_rate():
     fr = await client.get_funding_rate("BTCUSDT")
     assert isinstance(fr, FundingRate)
     assert fr.funding_rate == 0.0001
+
+
+@pytest.mark.asyncio
+async def test_get_global_long_short_ratio():
+    from src.client.models import LongShortRatio
+
+    client = BinanceClient()
+
+    mock_data = [
+        {
+            "symbol": "BTCUSDT",
+            "longAccount": "0.55",
+            "shortAccount": "0.45",
+            "longShortRatio": "1.22",
+            "timestamp": 1704067200000,
+        }
+    ]
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=mock_data)
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(return_value=mock_response)
+    client._session = mock_session
+
+    ratio = await client.get_global_long_short_ratio("BTCUSDT", "1h")
+    assert isinstance(ratio, LongShortRatio)
+    assert ratio.long_ratio == 0.55
+    assert ratio.short_ratio == 0.45
+    assert ratio.long_short_ratio == 1.22
+
+
+@pytest.mark.asyncio
+async def test_get_top_long_short_account_ratio():
+    from src.client.models import LongShortRatio
+
+    client = BinanceClient()
+
+    mock_data = [
+        {
+            "symbol": "BTCUSDT",
+            "longAccount": "0.60",
+            "shortAccount": "0.40",
+            "longShortRatio": "1.50",
+            "timestamp": 1704067200000,
+        }
+    ]
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=mock_data)
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(return_value=mock_response)
+    client._session = mock_session
+
+    ratio = await client.get_top_long_short_account_ratio("BTCUSDT", "1h")
+    assert ratio.long_ratio == 0.60
+
+
+@pytest.mark.asyncio
+async def test_get_top_long_short_position_ratio():
+    from src.client.models import LongShortRatio
+
+    client = BinanceClient()
+
+    mock_data = [
+        {
+            "symbol": "BTCUSDT",
+            "longAccount": "0.65",
+            "shortAccount": "0.35",
+            "longShortRatio": "1.86",
+            "timestamp": 1704067200000,
+        }
+    ]
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=mock_data)
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(return_value=mock_response)
+    client._session = mock_session
+
+    ratio = await client.get_top_long_short_position_ratio("BTCUSDT", "1h")
+    assert ratio.long_ratio == 0.65
+
+
+@pytest.mark.asyncio
+async def test_get_taker_long_short_ratio():
+    from src.client.models import TakerRatio
+
+    client = BinanceClient()
+
+    mock_data = [
+        {
+            "symbol": "BTCUSDT",
+            "buySellRatio": "1.10",
+            "buyVol": "5000.0",
+            "sellVol": "4545.45",
+            "timestamp": 1704067200000,
+        }
+    ]
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=mock_data)
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(return_value=mock_response)
+    client._session = mock_session
+
+    ratio = await client.get_taker_long_short_ratio("BTCUSDT", "1h")
+    assert isinstance(ratio, TakerRatio)
+    assert ratio.buy_sell_ratio == 1.10
+    assert ratio.buy_vol == 5000.0

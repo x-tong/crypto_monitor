@@ -132,3 +132,95 @@ class BinanceClient:
             funding_rate=float(latest["fundingRate"]),
             funding_time=int(latest["fundingTime"]),
         )
+
+    async def get_global_long_short_ratio(
+        self,
+        symbol: str,
+        period: str,
+        limit: int = 1,
+    ) -> "LongShortRatio":
+        """获取散户多空比"""
+        from src.client.models import LongShortRatio
+
+        data = await self._request(
+            "GET",
+            "/futures/data/globalLongShortAccountRatio",
+            {"symbol": symbol, "period": period, "limit": limit},
+        )
+        latest = data[0]
+        return LongShortRatio(
+            symbol=latest["symbol"],
+            long_ratio=float(latest["longAccount"]),
+            short_ratio=float(latest["shortAccount"]),
+            long_short_ratio=float(latest["longShortRatio"]),
+            timestamp=int(latest["timestamp"]),
+        )
+
+    async def get_top_long_short_account_ratio(
+        self,
+        symbol: str,
+        period: str,
+        limit: int = 1,
+    ) -> "LongShortRatio":
+        """获取大户多空比（按账户数）"""
+        from src.client.models import LongShortRatio
+
+        data = await self._request(
+            "GET",
+            "/futures/data/topLongShortAccountRatio",
+            {"symbol": symbol, "period": period, "limit": limit},
+        )
+        latest = data[0]
+        return LongShortRatio(
+            symbol=latest["symbol"],
+            long_ratio=float(latest["longAccount"]),
+            short_ratio=float(latest["shortAccount"]),
+            long_short_ratio=float(latest["longShortRatio"]),
+            timestamp=int(latest["timestamp"]),
+        )
+
+    async def get_top_long_short_position_ratio(
+        self,
+        symbol: str,
+        period: str,
+        limit: int = 1,
+    ) -> "LongShortRatio":
+        """获取大户多空比（按持仓量）"""
+        from src.client.models import LongShortRatio
+
+        data = await self._request(
+            "GET",
+            "/futures/data/topLongShortPositionRatio",
+            {"symbol": symbol, "period": period, "limit": limit},
+        )
+        latest = data[0]
+        return LongShortRatio(
+            symbol=latest["symbol"],
+            long_ratio=float(latest["longAccount"]),
+            short_ratio=float(latest["shortAccount"]),
+            long_short_ratio=float(latest["longShortRatio"]),
+            timestamp=int(latest["timestamp"]),
+        )
+
+    async def get_taker_long_short_ratio(
+        self,
+        symbol: str,
+        period: str,
+        limit: int = 1,
+    ) -> "TakerRatio":
+        """获取 Taker 买卖比"""
+        from src.client.models import TakerRatio
+
+        data = await self._request(
+            "GET",
+            "/futures/data/takerlongshortRatio",
+            {"symbol": symbol, "period": period, "limit": limit},
+        )
+        latest = data[0]
+        return TakerRatio(
+            symbol=latest["symbol"],
+            buy_sell_ratio=float(latest["buySellRatio"]),
+            buy_vol=float(latest["buyVol"]),
+            sell_vol=float(latest["sellVol"]),
+            timestamp=int(latest["timestamp"]),
+        )
