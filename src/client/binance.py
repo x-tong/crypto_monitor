@@ -2,7 +2,10 @@
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Awaitable, Callable
+
+TradeCallback = Callable[[dict[str, Any]], Awaitable[None]]
+LiquidationCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 import aiohttp
 
@@ -224,3 +227,77 @@ class BinanceClient:
             sell_vol=float(latest["sellVol"]),
             timestamp=int(latest["timestamp"]),
         )
+
+    async def _process_ws_message(
+        self,
+        message: str,
+        callback: TradeCallback,
+    ) -> None:
+        """处理交易 WebSocket 消息"""
+        data = json.loads(message)
+        if data.get("e") != "aggTrade":
+            return
+
+        # m=True: buyer is maker (卖单成交) = sell
+        # m=False: buyer is taker (买单成交) = buy
+        side = "sell" if data["m"] else "buy"
+
+        trade_data = {
+            "symbol": data["s"],
+            "price": float(data["p"]),
+            "quantity": float(data["q"]),
+            "timestamp": int(data["T"]),
+            "side": side,
+        }
+        await callback(trade_data)
+
+    async def _process_force_order_message(
+        self,
+        message: str,
+        callback: LiquidationCallback,
+    ) -> None:
+        """处理爆仓 WebSocket 消息"""
+        data = json.loads(message)
+        if data.get("e") != "forceOrder":
+            return
+
+        order = data["o"]
+        # S=SELL: 多头被强平 (卖出), S=BUY: 空头被强平 (买入)
+        side = order["S"].lower()
+
+        liq_data = {
+            "symbol": order["s"],
+            "side": side,
+            "price": float(order["p"]),
+            "quantity": float(order["q"]),
+            "timestamp": int(order["T"]),
+        }
+        await callback(liq_data)
+
+    async def subscribe_agg_trades(
+        self,
+        symbol: str,
+        callback: TradeCallback,
+    ) -> None:
+        """订阅聚合交易流"""
+        import websockets
+
+        stream = f"{symbol.lower()}@aggTrade"
+        url = f"{self.ws_url}/ws/{stream}"
+
+        async with websockets.connect(url) as ws:
+            async for message in ws:
+                await self._process_ws_message(message, callback)
+
+    async def subscribe_force_order(
+        self,
+        callback: LiquidationCallback,
+    ) -> None:
+        """订阅全市场爆仓流"""
+        import websockets
+
+        url = f"{self.ws_url}/ws/!forceOrder@arr"
+
+        async with websockets.connect(url) as ws:
+            async for message in ws:
+                await self._process_force_order_message(message, callback)
