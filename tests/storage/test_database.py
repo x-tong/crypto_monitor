@@ -93,3 +93,58 @@ async def test_insert_and_get_oi(db: Database):
     latest = await db.get_latest_oi("BTC/USDT:USDT")
     assert latest is not None
     assert latest.open_interest_usd == 5000000000.0
+
+
+async def test_insert_and_get_market_indicator(tmp_path):
+    from src.storage.database import Database
+    from src.storage.models import MarketIndicator
+
+    db = Database(str(tmp_path / "test.db"))
+    await db.init()
+
+    indicator = MarketIndicator(
+        id=None,
+        symbol="BTC/USDT:USDT",
+        timestamp=1706600000000,
+        top_account_ratio=1.5,
+        top_position_ratio=1.6,
+        global_account_ratio=0.9,
+        taker_buy_sell_ratio=1.1,
+    )
+
+    await db.insert_market_indicator(indicator)
+    result = await db.get_latest_market_indicator("BTC/USDT:USDT")
+
+    assert result is not None
+    assert result.top_account_ratio == 1.5
+    assert result.taker_buy_sell_ratio == 1.1
+
+    await db.close()
+
+
+async def test_get_market_indicator_history(tmp_path):
+    from src.storage.database import Database
+    from src.storage.models import MarketIndicator
+
+    db = Database(str(tmp_path / "test.db"))
+    await db.init()
+
+    now = int(time.time() * 1000)
+
+    # 插入两条记录：现在和30分钟前
+    for i, offset in enumerate([0, 30 * 60 * 1000]):
+        indicator = MarketIndicator(
+            id=None,
+            symbol="BTC/USDT:USDT",
+            timestamp=now - offset,
+            top_account_ratio=1.5 + i * 0.1,
+            top_position_ratio=1.6,
+            global_account_ratio=0.9,
+            taker_buy_sell_ratio=1.1,
+        )
+        await db.insert_market_indicator(indicator)
+
+    history = await db.get_market_indicator_history("BTC/USDT:USDT", hours=2)
+    assert len(history) == 2
+
+    await db.close()

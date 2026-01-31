@@ -3,7 +3,7 @@ import time
 
 import aiosqlite
 
-from .models import Liquidation, OISnapshot, PriceAlert, Trade
+from .models import Liquidation, MarketIndicator, OISnapshot, PriceAlert, Trade
 
 
 class Database:
@@ -76,6 +76,18 @@ class Database:
                 sample_count INTEGER NOT NULL,
                 calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS market_indicators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                top_account_ratio REAL NOT NULL,
+                top_position_ratio REAL NOT NULL,
+                global_account_ratio REAL NOT NULL,
+                taker_buy_sell_ratio REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_mi_symbol_time ON market_indicators(symbol, timestamp);
         """)
         await self.conn.commit()
 
@@ -221,3 +233,49 @@ class Database:
         )
         row = await cursor.fetchone()
         return OISnapshot(*row) if row else None
+
+    async def insert_market_indicator(self, mi: MarketIndicator) -> int:
+        assert self.conn is not None
+        cursor = await self.conn.execute(
+            """INSERT INTO market_indicators
+               (symbol, timestamp, top_account_ratio, top_position_ratio,
+                global_account_ratio, taker_buy_sell_ratio)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                mi.symbol,
+                mi.timestamp,
+                mi.top_account_ratio,
+                mi.top_position_ratio,
+                mi.global_account_ratio,
+                mi.taker_buy_sell_ratio,
+            ),
+        )
+        await self.conn.commit()
+        return cursor.lastrowid or 0
+
+    async def get_latest_market_indicator(self, symbol: str) -> MarketIndicator | None:
+        assert self.conn is not None
+        cursor = await self.conn.execute(
+            """SELECT id, symbol, timestamp, top_account_ratio, top_position_ratio,
+                      global_account_ratio, taker_buy_sell_ratio
+               FROM market_indicators WHERE symbol = ?
+               ORDER BY timestamp DESC LIMIT 1""",
+            (symbol,),
+        )
+        row = await cursor.fetchone()
+        return MarketIndicator(*row) if row else None
+
+    async def get_market_indicator_history(
+        self, symbol: str, hours: int
+    ) -> list[MarketIndicator]:
+        assert self.conn is not None
+        cutoff = int(time.time() * 1000) - hours * 3600 * 1000
+        cursor = await self.conn.execute(
+            """SELECT id, symbol, timestamp, top_account_ratio, top_position_ratio,
+                      global_account_ratio, taker_buy_sell_ratio
+               FROM market_indicators WHERE symbol = ? AND timestamp >= ?
+               ORDER BY timestamp DESC""",
+            (symbol, cutoff),
+        )
+        rows = await cursor.fetchall()
+        return [MarketIndicator(*row) for row in rows]
