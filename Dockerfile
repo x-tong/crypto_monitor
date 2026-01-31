@@ -5,12 +5,14 @@ WORKDIR /app
 # Install uv
 RUN pip install uv
 
-# Copy project files
-COPY pyproject.toml .
-COPY src/ src/
+# Copy dependency files first (for better caching)
+COPY pyproject.toml uv.lock ./
 
 # Install dependencies
-RUN uv sync --no-dev
+RUN uv sync --frozen --no-dev
+
+# Copy source code
+COPY src/ src/
 
 # Run
 CMD ["uv", "run", "python", "-m", "src.main"]
