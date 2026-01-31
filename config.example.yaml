@@ -2,8 +2,6 @@
 exchanges:
   binance:
     enabled: true
-  okx:
-    enabled: true
 
 symbols:
   - BTC/USDT:USDT
@@ -30,6 +28,13 @@ alerts:
   liquidation:
     enabled: true
     threshold_usd: 20000000
+  observe:
+    enabled: true
+    percentile_threshold: 90
+  important:
+    enabled: true
+    percentile_threshold: 90
+    min_dimensions: 3
 
 telegram:
   bot_token: "YOUR_BOT_TOKEN"
@@ -49,3 +54,21 @@ percentile:
 percentile_levels:
   normal_below: 75
   warning_below: 90
+
+long_short_ratio:
+  periods:
+    - "15m"
+    - "1h"
+  fetch_interval_minutes: 5
+
+insight:
+  enabled: true
+  divergence:
+    mild_percentile: 75
+    strong_percentile: 90
+  alerts:
+    divergence_spike: true
+    whale_flip: true
+    flow_reversal: true
+    flow_threshold_usd: 5000000
+    cooldown_minutes: 30

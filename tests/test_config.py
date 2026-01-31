@@ -10,8 +10,6 @@ def test_load_config_from_yaml(tmp_path: Path):
 exchanges:
   binance:
     enabled: true
-  okx:
-    enabled: true
 
 symbols:
   - BTC/USDT:USDT
@@ -76,8 +74,6 @@ def test_load_insight_config(tmp_path):
     config_content = """
 exchanges:
   binance:
-    enabled: true
-  okx:
     enabled: true
 
 symbols:
@@ -144,3 +140,80 @@ insight:
     assert config.insight.enabled is True
     assert config.insight.divergence.mild_percentile == 75
     assert config.insight.alerts.flow_threshold_usd == 5000000
+
+
+def test_tiered_alerts_config(tmp_path):
+    config_content = """
+exchanges:
+  binance:
+    enabled: true
+
+symbols:
+  - BTC/USDT:USDT
+
+thresholds:
+  default_usd: 100000
+  percentile: 95
+  update_interval_hours: 1
+
+intervals:
+  oi_fetch_minutes: 5
+  indicator_fetch_minutes: 5
+  report_hours: 8
+  cleanup_hours: 24
+
+alerts:
+  whale_flow:
+    enabled: true
+    threshold_usd: 10000000
+  oi_change:
+    enabled: true
+    threshold_pct: 3
+  liquidation:
+    enabled: true
+    threshold_usd: 20000000
+  observe:
+    enabled: true
+    percentile_threshold: 90
+  important:
+    enabled: true
+    percentile_threshold: 90
+    min_dimensions: 3
+
+telegram:
+  bot_token: "test"
+  chat_id: "123"
+
+database:
+  path: "data/test.db"
+  retention_days: 7
+
+price_alerts:
+  cooldown_minutes: 60
+
+percentile:
+  window_days: 7
+  update_interval_minutes: 60
+
+percentile_levels:
+  normal_below: 75
+  warning_below: 90
+
+long_short_ratio:
+  periods:
+    - "15m"
+    - "1h"
+  fetch_interval_minutes: 5
+"""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(config_content)
+
+    config = load_config(config_file)
+
+    assert config.alerts.observe.enabled is True
+    assert config.alerts.observe.percentile_threshold == 90
+    assert config.alerts.important.enabled is True
+    assert config.alerts.important.min_dimensions == 3
+    assert "15m" in config.long_short_ratio.periods
+    assert "1h" in config.long_short_ratio.periods
+    assert config.long_short_ratio.fetch_interval_minutes == 5

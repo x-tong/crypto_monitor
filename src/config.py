@@ -32,10 +32,23 @@ class AlertConfig(BaseModel):
     threshold_pct: float | None = None
 
 
+class ObserveAlertConfig(BaseModel):
+    enabled: bool = True
+    percentile_threshold: int = 90
+
+
+class ImportantAlertConfig(BaseModel):
+    enabled: bool = True
+    percentile_threshold: int = 90
+    min_dimensions: int = 3
+
+
 class AlertsConfig(BaseModel):
     whale_flow: AlertConfig = AlertConfig(threshold_usd=10000000)
     oi_change: AlertConfig = AlertConfig(threshold_pct=3)
     liquidation: AlertConfig = AlertConfig(threshold_usd=20000000)
+    observe: ObserveAlertConfig = ObserveAlertConfig()
+    important: ImportantAlertConfig = ImportantAlertConfig()
 
 
 class TelegramConfig(BaseModel):
@@ -81,6 +94,11 @@ class InsightConfig(BaseModel):
     alerts: InsightAlertsConfig = InsightAlertsConfig()
 
 
+class LongShortRatioConfig(BaseModel):
+    periods: list[str] = ["15m", "1h"]
+    fetch_interval_minutes: int = 5
+
+
 class Config(BaseModel):
     exchanges: ExchangesConfig = ExchangesConfig()
     symbols: list[str] = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
@@ -93,6 +111,7 @@ class Config(BaseModel):
     percentile: PercentileConfig = PercentileConfig()
     percentile_levels: PercentileLevelsConfig = PercentileLevelsConfig()
     insight: InsightConfig = InsightConfig()
+    long_short_ratio: LongShortRatioConfig = LongShortRatioConfig()
 
 
 def load_config(path: Path) -> Config:
