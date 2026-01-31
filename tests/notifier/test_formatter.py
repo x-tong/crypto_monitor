@@ -69,3 +69,52 @@ def test_format_price_alert_breakout():
 
     assert "📍 BTC 突破 100000" in msg
     assert "$100,150" in msg
+
+
+def test_format_insight_report():
+    from src.notifier.formatter import format_insight_report
+
+    data = {
+        "symbol": "BTC",
+        "price": 83200,
+        "price_change_1h": 1.2,
+        "summary": "大户加多，与散户分歧，资金流入",
+        # 大户 vs 散户
+        "top_position_ratio": 1.52,
+        "top_position_change": 0.12,
+        "top_position_pct": 65,
+        "global_account_ratio": 0.88,
+        "global_account_change": -0.08,
+        "global_account_pct": 58,
+        "divergence": 0.64,
+        "divergence_pct": 92,
+        "divergence_level": "strong",
+        # 资金动向
+        "taker_ratio": 1.15,
+        "taker_ratio_change": 0.05,
+        "taker_ratio_pct": 62,
+        "flow_1h": 5_200_000,
+        "flow_1h_pct": 58,
+        "flow_binance": 3_800_000,
+        "flow_okx": 1_400_000,
+        # 持仓 & 爆仓
+        "oi_value": 18_200_000_000,
+        "oi_change_1h": 1.2,
+        "oi_change_1h_pct": 55,
+        "liq_1h_total": 7_400_000,
+        "liq_long_ratio": 0.32,
+        # 情绪指标
+        "funding_rate": 0.012,
+        "funding_rate_pct": 48,
+        "spot_perp_spread": 0.05,
+        "spot_perp_spread_pct": 44,
+    }
+
+    result = format_insight_report(data)
+
+    assert "BTC 市场洞察" in result
+    assert "大户加多" in result
+    assert "大户 vs 散户" in result
+    assert "1.52" in result
+    assert "资金动向" in result
+    assert "空头承压" in result
