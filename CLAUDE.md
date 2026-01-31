@@ -30,9 +30,10 @@ WebSocket 采集 → SQLite 存储 → 聚合计算 → Telegram 推送
 **项目结构：**
 ```
 src/
+├── client/         # Binance API 客户端（HTTP + WebSocket）
 ├── collector/      # 数据采集（WebSocket + REST）
 ├── aggregator/     # 计算（flow, oi, liquidation, percentile）
-├── alert/          # 告警（trigger, price_monitor）
+├── alert/          # 告警（trigger, price_monitor, 分级告警）
 ├── notifier/       # Telegram Bot + 消息格式化
 ├── storage/        # SQLite 数据库
 ├── config.py       # 配置管理
@@ -51,6 +52,9 @@ src/
 - OI 变化阈值：3%/1h
 - 爆仓阈值：$20M/1h
 - 价位提醒冷却：1 小时
+- 分级告警：
+  - 观察提醒：单维度 > P90
+  - 重要提醒：≥3 维度 > P90
 
 ### 百分位级别
 - 🟢 < P75（正常）
@@ -61,7 +65,8 @@ src/
 - TDD：先写测试再实现
 - 类型注解：所有函数签名
 - 异步：全程 async/await
-- 测试命令：`uv run pytest tests/ -v`
+- 运行：`uv run python -m src.main`
+- 测试：`uv run pytest tests/ -v`
 - 格式化：`uv run ruff check --fix . && uv run ruff format .`
 - 类型检查：`uv run mypy src/`
 
@@ -72,4 +77,4 @@ src/
 ## 文档
 - 外部文档优先使用 context7 mcp
 - 设计文档：[docs/DESIGN.md](docs/DESIGN.md)
-- 实现计划：[docs/plans/2026-01-30-crypto-monitor.md](./docs/plans/2026-01-30-crypto-monitor.md)
+- 重构计划：[docs/plans/2026-02-01-binance-refactor-impl.md](docs/plans/2026-02-01-binance-refactor-impl.md)
