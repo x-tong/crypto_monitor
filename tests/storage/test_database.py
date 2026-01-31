@@ -148,3 +148,44 @@ async def test_get_market_indicator_history(tmp_path):
     assert len(history) == 2
 
     await db.close()
+
+
+async def test_insert_and_get_long_short_snapshot(db: Database):
+    now = int(time.time() * 1000)
+    await db.insert_long_short_snapshot(
+        symbol="BTCUSDT",
+        timestamp=now,
+        ratio_type="global",
+        long_ratio=0.55,
+        short_ratio=0.45,
+        long_short_ratio=1.22,
+    )
+
+    snapshots = await db.get_long_short_snapshots("BTCUSDT", "global", hours=1)
+    assert len(snapshots) == 1
+    assert snapshots[0]["long_ratio"] == 0.55
+    assert snapshots[0]["ratio_type"] == "global"
+
+
+async def test_get_latest_long_short_snapshot(db: Database):
+    now = int(time.time() * 1000)
+    await db.insert_long_short_snapshot(
+        symbol="BTCUSDT",
+        timestamp=now - 3600000,
+        ratio_type="top_position",
+        long_ratio=0.60,
+        short_ratio=0.40,
+        long_short_ratio=1.50,
+    )
+    await db.insert_long_short_snapshot(
+        symbol="BTCUSDT",
+        timestamp=now,
+        ratio_type="top_position",
+        long_ratio=0.65,
+        short_ratio=0.35,
+        long_short_ratio=1.86,
+    )
+
+    latest = await db.get_latest_long_short_snapshot("BTCUSDT", "top_position")
+    assert latest is not None
+    assert latest["long_ratio"] == 0.65

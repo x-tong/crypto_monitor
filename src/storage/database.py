@@ -88,6 +88,19 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS idx_mi_symbol_time ON market_indicators(symbol, timestamp);
+
+            CREATE TABLE IF NOT EXISTS long_short_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                ratio_type TEXT NOT NULL,
+                long_ratio REAL NOT NULL,
+                short_ratio REAL NOT NULL,
+                long_short_ratio REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_ls_symbol_type_time
+                ON long_short_snapshots(symbol, ratio_type, timestamp);
         """)
         await self.conn.commit()
 
@@ -277,3 +290,64 @@ class Database:
         )
         rows = await cursor.fetchall()
         return [MarketIndicator(*row) for row in rows]
+
+    async def insert_long_short_snapshot(
+        self,
+        symbol: str,
+        timestamp: int,
+        ratio_type: str,
+        long_ratio: float,
+        short_ratio: float,
+        long_short_ratio: float,
+    ) -> int:
+        """插入多空比快照"""
+        assert self.conn is not None
+        cursor = await self.conn.execute(
+            """INSERT INTO long_short_snapshots
+               (symbol, timestamp, ratio_type, long_ratio, short_ratio, long_short_ratio)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (symbol, timestamp, ratio_type, long_ratio, short_ratio, long_short_ratio),
+        )
+        await self.conn.commit()
+        return cursor.lastrowid or 0
+
+    async def get_long_short_snapshots(
+        self,
+        symbol: str,
+        ratio_type: str,
+        hours: int = 24,
+    ) -> list[dict]:
+        """获取多空比快照历史"""
+        assert self.conn is not None
+        cutoff = int(time.time() * 1000) - hours * 3600 * 1000
+        cursor = await self.conn.execute(
+            """SELECT id, symbol, timestamp, ratio_type, long_ratio, short_ratio, long_short_ratio
+               FROM long_short_snapshots
+               WHERE symbol = ? AND ratio_type = ? AND timestamp >= ?
+               ORDER BY timestamp ASC""",
+            (symbol, ratio_type, cutoff),
+        )
+        rows = await cursor.fetchall()
+        columns = ["id", "symbol", "timestamp", "ratio_type", "long_ratio", "short_ratio", "long_short_ratio"]
+        return [dict(zip(columns, row)) for row in rows]
+
+    async def get_latest_long_short_snapshot(
+        self,
+        symbol: str,
+        ratio_type: str,
+    ) -> dict | None:
+        """获取最新多空比快照"""
+        assert self.conn is not None
+        cursor = await self.conn.execute(
+            """SELECT id, symbol, timestamp, ratio_type, long_ratio, short_ratio, long_short_ratio
+               FROM long_short_snapshots
+               WHERE symbol = ? AND ratio_type = ?
+               ORDER BY timestamp DESC
+               LIMIT 1""",
+            (symbol, ratio_type),
+        )
+        row = await cursor.fetchone()
+        if row:
+            columns = ["id", "symbol", "timestamp", "ratio_type", "long_ratio", "short_ratio", "long_short_ratio"]
+            return dict(zip(columns, row))
+        return None
