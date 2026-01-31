@@ -1,5 +1,6 @@
 # src/storage/database.py
 import time
+from typing import Any
 
 import aiosqlite
 
@@ -316,7 +317,7 @@ class Database:
         symbol: str,
         ratio_type: str,
         hours: int = 24,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """获取多空比快照历史"""
         assert self.conn is not None
         cutoff = int(time.time() * 1000) - hours * 3600 * 1000
@@ -328,14 +329,22 @@ class Database:
             (symbol, ratio_type, cutoff),
         )
         rows = await cursor.fetchall()
-        columns = ["id", "symbol", "timestamp", "ratio_type", "long_ratio", "short_ratio", "long_short_ratio"]
+        columns = [
+            "id",
+            "symbol",
+            "timestamp",
+            "ratio_type",
+            "long_ratio",
+            "short_ratio",
+            "long_short_ratio",
+        ]
         return [dict(zip(columns, row)) for row in rows]
 
     async def get_latest_long_short_snapshot(
         self,
         symbol: str,
         ratio_type: str,
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         """获取最新多空比快照"""
         assert self.conn is not None
         cursor = await self.conn.execute(
@@ -348,6 +357,14 @@ class Database:
         )
         row = await cursor.fetchone()
         if row:
-            columns = ["id", "symbol", "timestamp", "ratio_type", "long_ratio", "short_ratio", "long_short_ratio"]
+            columns = [
+                "id",
+                "symbol",
+                "timestamp",
+                "ratio_type",
+                "long_ratio",
+                "short_ratio",
+                "long_short_ratio",
+            ]
             return dict(zip(columns, row))
         return None

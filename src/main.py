@@ -12,11 +12,17 @@ from src.aggregator.liquidation import calculate_liquidations
 from src.aggregator.oi import calculate_oi_change, interpret_oi_price
 from src.alert.insight_trigger import check_insight_alerts
 from src.alert.price_monitor import check_price_alerts
+from src.alert.trigger import AlertLevel, check_tiered_alerts
 from src.collector.binance_liq import BinanceLiquidationCollector
 from src.collector.binance_trades import BinanceTradesCollector
 from src.collector.indicator_fetcher import IndicatorFetcher
 from src.config import Config, load_config
-from src.notifier.formatter import format_insight_report, format_report
+from src.notifier.formatter import (
+    format_important_alert,
+    format_insight_report,
+    format_observe_alert,
+    format_report,
+)
 from src.notifier.telegram import TelegramNotifier
 from src.storage.database import Database
 from src.storage.models import Liquidation, PriceAlert, Trade
@@ -416,6 +422,63 @@ class CryptoMonitor:
                 except Exception as e:
                     logger.error(f"Failed to check insight alerts for {symbol}: {e}")
 
+    async def _check_tiered_alerts(self) -> None:
+        """检查分级告警（观察/重要提醒）"""
+        observe_config = self.config.alerts.observe
+        important_config = self.config.alerts.important
+
+        if not observe_config.enabled and not important_config.enabled:
+            return
+
+        while self.running:
+            await asyncio.sleep(60)  # 每分钟检查
+
+            for symbol in self.config.symbols:
+                try:
+                    indicators = await self.indicator_fetcher.fetch_indicators(symbol)
+
+                    # TODO: 从百分位计算器获取各维度百分位
+                    # 当前使用固定值，实际需要从 percentile 模块计算
+                    percentiles: dict[str, float] = {
+                        "主力资金": 50.0,
+                        "OI变化": 50.0,
+                        "爆仓": 50.0,
+                        "资金费率": 50.0,
+                        "多空比": 50.0,
+                    }
+
+                    # 检查分级告警
+                    threshold = observe_config.percentile_threshold
+                    min_dims = important_config.min_dimensions
+                    alerts = check_tiered_alerts(percentiles, threshold, min_dims)
+
+                    for alert in alerts:
+                        short_symbol = symbol.split("/")[0]
+                        timestamp = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
+
+                        # 格式化维度数据
+                        dimensions = [(name, pct, f"{pct:.0f}") for name, pct in alert.dimensions]
+
+                        data = {
+                            "symbol": short_symbol,
+                            "price": indicators.futures_price if indicators else 0,
+                            "price_change_1h": 0,
+                            "dimensions": dimensions,
+                            "timestamp": timestamp,
+                        }
+
+                        if alert.level == AlertLevel.OBSERVE and observe_config.enabled:
+                            msg = format_observe_alert(data)
+                            await self.notifier.send_message(msg)
+                            logger.info(f"Observe alert: {symbol}")
+                        elif alert.level == AlertLevel.IMPORTANT and important_config.enabled:
+                            msg = format_important_alert(data)
+                            await self.notifier.send_message(msg)
+                            logger.info(f"Important alert: {symbol}")
+
+                except Exception as e:
+                    logger.error(f"Failed to check tiered alerts for {symbol}: {e}")
+
     async def run(self) -> None:
         await self.init()
         self.running = True
@@ -433,6 +496,7 @@ class CryptoMonitor:
             asyncio.create_task(self._fetch_indicators()),
             asyncio.create_task(self._check_alerts()),
             asyncio.create_task(self._check_insight_alerts()),
+            asyncio.create_task(self._check_tiered_alerts()),
         ]
 
         logger.info("Crypto Monitor started")

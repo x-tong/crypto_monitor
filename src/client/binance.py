@@ -1,13 +1,25 @@
 """Binance Futures API 客户端"""
 
+from __future__ import annotations
+
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any
+
+import aiohttp
+
+if TYPE_CHECKING:
+    from src.client.models import (
+        FundingRate,
+        Kline,
+        LongShortRatio,
+        OpenInterest,
+        TakerRatio,
+    )
 
 TradeCallback = Callable[[dict[str, Any]], Awaitable[None]]
 LiquidationCallback = Callable[[dict[str, Any]], Awaitable[None]]
-
-import aiohttp
 
 
 class BinanceAPIError(Exception):
@@ -54,7 +66,7 @@ class BinanceClient:
 
         return await response.json()
 
-    async def __aenter__(self) -> "BinanceClient":
+    async def __aenter__(self) -> BinanceClient:
         self._session = aiohttp.ClientSession()
         return self
 
@@ -68,7 +80,7 @@ class BinanceClient:
         symbol: str,
         interval: str,
         limit: int = 500,
-    ) -> list["Kline"]:
+    ) -> list[Kline]:
         """获取 K 线数据"""
         from src.client.models import Kline
 
@@ -90,7 +102,7 @@ class BinanceClient:
             for k in data
         ]
 
-    async def get_open_interest(self, symbol: str) -> "OpenInterest":
+    async def get_open_interest(self, symbol: str) -> OpenInterest:
         """获取当前持仓量"""
         from src.client.models import OpenInterest
 
@@ -106,7 +118,7 @@ class BinanceClient:
         symbol: str,
         period: str,
         limit: int = 30,
-    ) -> list["OpenInterest"]:
+    ) -> list[OpenInterest]:
         """获取历史持仓量"""
         from src.client.models import OpenInterest
 
@@ -124,7 +136,7 @@ class BinanceClient:
             for d in data
         ]
 
-    async def get_funding_rate(self, symbol: str) -> "FundingRate":
+    async def get_funding_rate(self, symbol: str) -> FundingRate:
         """获取当前资金费率"""
         from src.client.models import FundingRate
 
@@ -141,7 +153,7 @@ class BinanceClient:
         symbol: str,
         period: str,
         limit: int = 1,
-    ) -> "LongShortRatio":
+    ) -> LongShortRatio:
         """获取散户多空比"""
         from src.client.models import LongShortRatio
 
@@ -164,7 +176,7 @@ class BinanceClient:
         symbol: str,
         period: str,
         limit: int = 1,
-    ) -> "LongShortRatio":
+    ) -> LongShortRatio:
         """获取大户多空比（按账户数）"""
         from src.client.models import LongShortRatio
 
@@ -187,7 +199,7 @@ class BinanceClient:
         symbol: str,
         period: str,
         limit: int = 1,
-    ) -> "LongShortRatio":
+    ) -> LongShortRatio:
         """获取大户多空比（按持仓量）"""
         from src.client.models import LongShortRatio
 
@@ -210,7 +222,7 @@ class BinanceClient:
         symbol: str,
         period: str,
         limit: int = 1,
-    ) -> "TakerRatio":
+    ) -> TakerRatio:
         """获取 Taker 买卖比"""
         from src.client.models import TakerRatio
 
@@ -287,6 +299,8 @@ class BinanceClient:
 
         async with websockets.connect(url) as ws:
             async for message in ws:
+                if isinstance(message, bytes):
+                    message = message.decode("utf-8")
                 await self._process_ws_message(message, callback)
 
     async def subscribe_force_order(
@@ -300,4 +314,6 @@ class BinanceClient:
 
         async with websockets.connect(url) as ws:
             async for message in ws:
+                if isinstance(message, bytes):
+                    message = message.decode("utf-8")
                 await self._process_force_order_message(message, callback)

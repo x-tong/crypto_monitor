@@ -1,9 +1,10 @@
 # tests/collector/test_indicator_fetcher.py
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from src.client.models import FundingRate, Kline, LongShortRatio, OpenInterest, TakerRatio
 from src.collector.indicator_fetcher import IndicatorFetcher
-from src.client.models import OpenInterest, Kline, FundingRate, LongShortRatio, TakerRatio
 
 
 @pytest.mark.asyncio
@@ -78,16 +79,32 @@ async def test_fetch_market_indicators():
     fetcher = IndicatorFetcher(symbols=["BTC/USDT:USDT"])
 
     mock_top_account = LongShortRatio(
-        symbol="BTCUSDT", long_ratio=0.6, short_ratio=0.4, long_short_ratio=1.5, timestamp=1706600000000
+        symbol="BTCUSDT",
+        long_ratio=0.6,
+        short_ratio=0.4,
+        long_short_ratio=1.5,
+        timestamp=1706600000000,
     )
     mock_top_position = LongShortRatio(
-        symbol="BTCUSDT", long_ratio=0.62, short_ratio=0.38, long_short_ratio=1.6, timestamp=1706600000000
+        symbol="BTCUSDT",
+        long_ratio=0.62,
+        short_ratio=0.38,
+        long_short_ratio=1.6,
+        timestamp=1706600000000,
     )
     mock_global = LongShortRatio(
-        symbol="BTCUSDT", long_ratio=0.47, short_ratio=0.53, long_short_ratio=0.9, timestamp=1706600000000
+        symbol="BTCUSDT",
+        long_ratio=0.47,
+        short_ratio=0.53,
+        long_short_ratio=0.9,
+        timestamp=1706600000000,
     )
     mock_taker = TakerRatio(
-        symbol="BTCUSDT", buy_sell_ratio=1.1, buy_vol=5000.0, sell_vol=4545.0, timestamp=1706600000000
+        symbol="BTCUSDT",
+        buy_sell_ratio=1.1,
+        buy_vol=5000.0,
+        sell_vol=4545.0,
+        timestamp=1706600000000,
     )
 
     mock_client = MagicMock()

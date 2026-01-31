@@ -226,11 +226,13 @@ def format_observe_alert(data: dict[str, Any]) -> str:
     for name, percentile, value in data["dimensions"]:
         lines.append(f"{name}: {value} 🔴 P{int(percentile)}")
 
-    lines.extend([
-        "",
-        f"💵 ${data['price']:,.0f} ({data['price_change_1h']:+.1f}% 1h)",
-        f"⏰ {data['timestamp']}",
-    ])
+    lines.extend(
+        [
+            "",
+            f"💵 ${data['price']:,.0f} ({data['price_change_1h']:+.1f}% 1h)",
+            f"⏰ {data['timestamp']}",
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -246,10 +248,12 @@ def format_important_alert(data: dict[str, Any]) -> str:
     for name, percentile, value in data["dimensions"]:
         lines.append(f"• {name}: {value} 🔴 P{int(percentile)}")
 
-    lines.extend([
-        "",
-        f"💵 ${data['price']:,.0f} ({data['price_change_1h']:+.1f}% 1h)",
-        f"⏰ {data['timestamp']}",
-    ])
+    lines.extend(
+        [
+            "",
+            f"💵 ${data['price']:,.0f} ({data['price_change_1h']:+.1f}% 1h)",
+            f"⏰ {data['timestamp']}",
+        ]
+    )
 
     return "\n".join(lines)

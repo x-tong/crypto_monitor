@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.client.binance import BinanceClient, BinanceAPIError
+import pytest
+
+from src.client.binance import BinanceAPIError, BinanceClient
 
 
 def test_binance_client_init():
@@ -98,8 +99,6 @@ async def test_get_open_interest():
 
 @pytest.mark.asyncio
 async def test_get_open_interest_hist():
-    from src.client.models import OpenInterest
-
     client = BinanceClient()
 
     mock_data = [
@@ -172,8 +171,6 @@ async def test_get_global_long_short_ratio():
 
 @pytest.mark.asyncio
 async def test_get_top_long_short_account_ratio():
-    from src.client.models import LongShortRatio
-
     client = BinanceClient()
 
     mock_data = [
@@ -199,8 +196,6 @@ async def test_get_top_long_short_account_ratio():
 
 @pytest.mark.asyncio
 async def test_get_top_long_short_position_ratio():
-    from src.client.models import LongShortRatio
-
     client = BinanceClient()
 
     mock_data = [

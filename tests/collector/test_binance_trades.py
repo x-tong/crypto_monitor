@@ -1,6 +1,6 @@
 # tests/collector/test_binance_trades.py
+
 import pytest
-from unittest.mock import AsyncMock
 
 from src.collector.binance_trades import BinanceTradesCollector
 from src.storage.models import Trade
