@@ -120,3 +120,15 @@ class BinanceClient:
             )
             for d in data
         ]
+
+    async def get_funding_rate(self, symbol: str) -> "FundingRate":
+        """获取当前资金费率"""
+        from src.client.models import FundingRate
+
+        data = await self._request("GET", "/fapi/v1/fundingRate", {"symbol": symbol, "limit": 1})
+        latest = data[0]
+        return FundingRate(
+            symbol=latest["symbol"],
+            funding_rate=float(latest["fundingRate"]),
+            funding_time=int(latest["fundingTime"]),
+        )

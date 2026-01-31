@@ -118,3 +118,23 @@ async def test_get_open_interest_hist():
     assert len(oi_list) == 2
     assert oi_list[0].open_interest == 50000.0
     assert oi_list[1].open_interest == 51000.0
+
+
+@pytest.mark.asyncio
+async def test_get_funding_rate():
+    from src.client.models import FundingRate
+
+    client = BinanceClient()
+
+    mock_data = [{"symbol": "BTCUSDT", "fundingRate": "0.0001", "fundingTime": 1704067200000}]
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=mock_data)
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(return_value=mock_response)
+    client._session = mock_session
+
+    fr = await client.get_funding_rate("BTCUSDT")
+    assert isinstance(fr, FundingRate)
+    assert fr.funding_rate == 0.0001
