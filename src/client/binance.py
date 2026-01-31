@@ -86,3 +86,37 @@ class BinanceClient:
             )
             for k in data
         ]
+
+    async def get_open_interest(self, symbol: str) -> "OpenInterest":
+        """获取当前持仓量"""
+        from src.client.models import OpenInterest
+
+        data = await self._request("GET", "/fapi/v1/openInterest", {"symbol": symbol})
+        return OpenInterest(
+            symbol=data["symbol"],
+            open_interest=float(data["openInterest"]),
+            timestamp=int(data["time"]),
+        )
+
+    async def get_open_interest_hist(
+        self,
+        symbol: str,
+        period: str,
+        limit: int = 30,
+    ) -> list["OpenInterest"]:
+        """获取历史持仓量"""
+        from src.client.models import OpenInterest
+
+        data = await self._request(
+            "GET",
+            "/futures/data/openInterestHist",
+            {"symbol": symbol, "period": period, "limit": limit},
+        )
+        return [
+            OpenInterest(
+                symbol=d["symbol"],
+                open_interest=float(d["sumOpenInterest"]),
+                timestamp=int(d["timestamp"]),
+            )
+            for d in data
+        ]

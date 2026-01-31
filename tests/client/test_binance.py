@@ -73,3 +73,48 @@ async def test_get_klines():
     assert len(klines) == 1
     assert isinstance(klines[0], Kline)
     assert klines[0].close == 42300.0
+
+
+@pytest.mark.asyncio
+async def test_get_open_interest():
+    from src.client.models import OpenInterest
+
+    client = BinanceClient()
+
+    mock_data = {"symbol": "BTCUSDT", "openInterest": "50000.123", "time": 1704067200000}
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=mock_data)
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(return_value=mock_response)
+    client._session = mock_session
+
+    oi = await client.get_open_interest("BTCUSDT")
+    assert isinstance(oi, OpenInterest)
+    assert oi.symbol == "BTCUSDT"
+    assert oi.open_interest == 50000.123
+
+
+@pytest.mark.asyncio
+async def test_get_open_interest_hist():
+    from src.client.models import OpenInterest
+
+    client = BinanceClient()
+
+    mock_data = [
+        {"symbol": "BTCUSDT", "sumOpenInterest": "50000.0", "timestamp": 1704067200000},
+        {"symbol": "BTCUSDT", "sumOpenInterest": "51000.0", "timestamp": 1704070800000},
+    ]
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=mock_data)
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(return_value=mock_response)
+    client._session = mock_session
+
+    oi_list = await client.get_open_interest_hist("BTCUSDT", "1h", limit=2)
+    assert len(oi_list) == 2
+    assert oi_list[0].open_interest == 50000.0
+    assert oi_list[1].open_interest == 51000.0
