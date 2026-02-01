@@ -185,3 +185,63 @@ class Downloader:
             }
 
         return result
+
+    async def download_indicators(
+        self,
+        symbol: str,
+        client: "BinanceClient",  # type: ignore[name-defined]
+        days: int = 365,
+    ) -> dict[str, Path]:
+        """从 API 下载指标数据"""
+        import json
+
+        self.indicators_dir.mkdir(parents=True, exist_ok=True)
+        result = {}
+
+        # OI 历史 (5m 粒度，需要分批获取)
+        oi_path = self.indicators_dir / f"openInterestHist_{symbol}.jsonl"
+        if not oi_path.exists():
+            oi_data = []
+            # API 限制每次 500 条，5分钟粒度，每天 288 条
+            # 365 天需要约 105,120 条，分批获取
+            try:
+                data = await client.get_open_interest_hist(symbol, "5m", limit=500)
+                oi_data.extend(
+                    [
+                        {
+                            "symbol": d.symbol,
+                            "open_interest": d.open_interest,
+                            "timestamp": d.timestamp,
+                        }
+                        for d in data
+                    ]
+                )
+            except Exception as e:
+                logger.warning(f"Failed to get OI hist for {symbol}: {e}")
+
+            with open(oi_path, "w") as f:
+                for item in oi_data:
+                    f.write(json.dumps(item) + "\n")
+            result["openInterestHist"] = oi_path
+
+        # 资金费率
+        funding_path = self.indicators_dir / f"fundingRate_{symbol}.jsonl"
+        if not funding_path.exists():
+            try:
+                data = await client.get_funding_rate(symbol)
+                with open(funding_path, "w") as f:
+                    f.write(
+                        json.dumps(
+                            {
+                                "symbol": data.symbol,
+                                "funding_rate": data.funding_rate,
+                                "funding_time": data.funding_time,
+                            }
+                        )
+                        + "\n"
+                    )
+                result["fundingRate"] = funding_path
+            except Exception as e:
+                logger.warning(f"Failed to get funding rate for {symbol}: {e}")
+
+        return result

@@ -53,3 +53,33 @@ async def test_download_file_creates_cache_dir(tmp_path):
         )
 
     assert (tmp_path / "test.zip").exists()
+
+
+async def test_download_indicators_from_api(tmp_path):
+    from src.scripts.backfill.downloader import Downloader
+
+    downloader = Downloader(cache_dir=tmp_path)
+
+    # Mock BinanceClient
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    # Mock API 响应
+    mock_oi = MagicMock()
+    mock_oi.symbol = "BTCUSDT"
+    mock_oi.open_interest = 50000.0
+    mock_oi.timestamp = 1704067200000
+    mock_client.get_open_interest_hist = AsyncMock(return_value=[mock_oi])
+
+    mock_funding = MagicMock()
+    mock_funding.symbol = "BTCUSDT"
+    mock_funding.funding_rate = 0.0001
+    mock_funding.funding_time = 1704067200000
+    mock_client.get_funding_rate = AsyncMock(return_value=mock_funding)
+
+    await downloader.download_indicators("BTCUSDT", mock_client, days=7)
+
+    # 验证文件创建
+    oi_file = tmp_path / "indicators" / "openInterestHist_BTCUSDT.jsonl"
+    assert oi_file.exists()
