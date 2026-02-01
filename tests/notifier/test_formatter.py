@@ -224,3 +224,78 @@ def test_format_history_reference_block_empty():
 
     result = format_history_reference_block({}, {})
     assert result == ""
+
+
+def test_format_insight_report_with_history():
+    from src.notifier.formatter import format_insight_report_with_history
+
+    data = {
+        "symbol": "BTC",
+        "price": 82000.0,
+        "price_change_1h": 0.5,
+        "top_position_ratio": 1.8,
+        "top_position_pct": 50.0,
+        "top_position_pct_7d": 55.0,
+        "top_position_pct_30d": 60.0,
+        "top_position_pct_90d": 45.0,
+        "top_position_change": 0.02,
+        "global_account_ratio": 1.5,
+        "global_account_pct": 78.0,
+        "global_account_pct_7d": 80.0,
+        "global_account_pct_30d": 75.0,
+        "global_account_pct_90d": 70.0,
+        "global_account_change": 0.01,
+        "flow_1h": 47_700_000.0,
+        "flow_1h_pct": 92.0,  # P90+ 触发
+        "flow_1h_pct_7d": 95.0,
+        "flow_1h_pct_30d": 92.0,
+        "flow_1h_pct_90d": 70.0,
+        "flow_binance": 47_700_000.0,
+        "taker_ratio": 0.8,
+        "taker_ratio_pct": 50.0,
+        "taker_ratio_pct_7d": 50.0,
+        "taker_ratio_pct_30d": 50.0,
+        "taker_ratio_pct_90d": 50.0,
+        "oi_value": 7_400_000_000.0,
+        "oi_change_1h": 0.5,
+        "oi_change_1h_pct": 60.0,
+        "oi_change_1h_pct_7d": 60.0,
+        "oi_change_1h_pct_30d": 55.0,
+        "oi_change_1h_pct_90d": 50.0,
+        "liq_1h_total": 500_000.0,
+        "liq_long_ratio": 0.7,
+        "funding_rate": 0.01,
+        "funding_rate_pct": 50.0,
+        "funding_rate_pct_7d": 50.0,
+        "funding_rate_pct_30d": 50.0,
+        "funding_rate_pct_90d": 50.0,
+        "spot_perp_spread": 0.01,
+        "spot_perp_spread_pct": 50.0,
+        "spot_perp_spread_pct_7d": 50.0,
+        "spot_perp_spread_pct_30d": 50.0,
+        "spot_perp_spread_pct_90d": 50.0,
+    }
+
+    history_data = {
+        "flow_1h": {
+            "stats": {
+                "7d": {
+                    "count": 20,
+                    "stats": {"24h": {"up_pct": 45.0, "down_pct": 55.0, "avg_change": -1.2}},
+                },
+                "30d": {
+                    "count": 15,
+                    "stats": {"24h": {"up_pct": 35.0, "down_pct": 65.0, "avg_change": -2.8}},
+                },
+            },
+            "latest": {
+                "30d": {"triggered_at": 1706400000000, "price_at_trigger": 82000.0, "change_24h": -4.8}
+            },
+        }
+    }
+
+    result = format_insight_report_with_history(data, history_data)
+
+    assert "P95(7d) / P92(30d) / P70(90d)" in result
+    assert "历史参考" in result
+    assert "7d P90+" in result

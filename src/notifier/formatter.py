@@ -488,3 +488,160 @@ def format_important_alert(data: dict[str, Any]) -> str:
     )
 
     return "\n".join(lines)
+
+
+def _format_multi_pct(pct_7d: float, pct_30d: float, pct_90d: float) -> str:
+    """格式化三窗口百分位"""
+    return f"P{int(pct_7d)}(7d) / P{int(pct_30d)}(30d) / P{int(pct_90d)}(90d)"
+
+
+def _has_extreme(pct_7d: float, pct_30d: float, pct_90d: float, threshold: float = 90) -> bool:
+    """检查是否有任一窗口达到极端值"""
+    return pct_7d >= threshold or pct_30d >= threshold or pct_90d >= threshold
+
+
+def format_insight_report_with_history(
+    data: dict[str, Any],
+    history_data: dict[str, Any] | None = None,
+) -> str:
+    """
+    生成带历史参考的市场洞察报告
+
+    Args:
+        data: 市场数据（包含 _pct_7d/_pct_30d/_pct_90d 字段）
+        history_data: {维度: {stats, latest}} 历史统计数据
+    """
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    history_data = history_data or {}
+
+    # 转换比率为百分比
+    top_long_pct = _ratio_to_pct(data["top_position_ratio"])
+    top_short_pct = 100 - top_long_pct
+    global_long_pct = _ratio_to_pct(data["global_account_ratio"])
+    global_short_pct = 100 - global_long_pct
+    taker_buy_pct = _ratio_to_pct(data["taker_ratio"])
+    taker_sell_pct = 100 - taker_buy_pct
+
+    # 变化方向和描述
+    top_dir = "↑" if data["top_position_change"] > 0 else "↓"
+    top_change_pct = abs(data["top_position_change"]) / max(data["top_position_ratio"], 0.01) * 100
+    top_desc = _change_desc(data["top_position_change"])
+
+    global_dir = "↑" if data["global_account_change"] > 0 else "↓"
+    global_change_pct = (
+        abs(data["global_account_change"]) / max(data["global_account_ratio"], 0.01) * 100
+    )
+    global_desc = _change_desc(data["global_account_change"])
+
+    # 大户散户一致性判断
+    both_long = top_long_pct > 50 and global_long_pct > 50
+    both_short = top_long_pct < 50 and global_long_pct < 50
+    if both_long:
+        consensus = "大户散户一致看多"
+    elif both_short:
+        consensus = "大户散户一致看空"
+    else:
+        consensus = "大户散户存在分歧"
+
+    # 资金流向
+    flow_1h = _format_usd_signed(data["flow_1h"])
+    flow_binance = _format_usd_signed(data["flow_binance"])
+    flow_pct_str = _format_multi_pct(
+        data.get("flow_1h_pct_7d", 50),
+        data.get("flow_1h_pct_30d", 50),
+        data.get("flow_1h_pct_90d", 50),
+    )
+
+    # Taker 描述
+    if taker_buy_pct > 55:
+        taker_desc = "买方主导"
+    elif taker_buy_pct < 45:
+        taker_desc = "卖方主导"
+    else:
+        taker_desc = "买卖均衡"
+
+    # OI 解读
+    oi_interp = _oi_interpretation(data["oi_change_1h"], data["price_change_1h"])
+
+    # 爆仓
+    liq_long_pct = int(data["liq_long_ratio"] * 100)
+    liq_short_pct = 100 - liq_long_pct
+    if data["liq_long_ratio"] > 0.65:
+        liq_desc = "多头承压"
+    elif data["liq_long_ratio"] < 0.35:
+        liq_desc = "空头承压"
+    else:
+        liq_desc = "多空均衡"
+
+    # 资金费率描述
+    if data["funding_rate"] > 0.01:
+        funding_desc = "多头付费，情绪偏多"
+    elif data["funding_rate"] < -0.01:
+        funding_desc = "空头付费，情绪偏空"
+    else:
+        funding_desc = "费率中性"
+
+    # 构建资金流向部分（可能包含历史参考）
+    flow_section = f"""💰 资金动向 [实时]
+
+  主力净流向 (1h): {flow_1h}
+    {flow_pct_str}
+    Binance: {flow_binance}"""
+
+    # 检查是否需要显示历史参考
+    if _has_extreme(
+        data.get("flow_1h_pct_7d", 0),
+        data.get("flow_1h_pct_30d", 0),
+        data.get("flow_1h_pct_90d", 0),
+    ):
+        flow_history = history_data.get("flow_1h", {})
+        if flow_history:
+            history_block = format_history_reference_block(
+                flow_history.get("stats", {}),
+                flow_history.get("latest", {}),
+            )
+            if history_block:
+                flow_section += "\n\n" + history_block
+
+    # 构建报告
+    return f"""📊 {data["symbol"]} 市场洞察
+━━━━━━━━━━━━━━━━━━━━
+💵 ${data["price"]:,.0f} ({data["price_change_1h"]:+.1f}% vs 1h前)
+
+━━━━━━━━━━━━━━━━━━━━
+🎯 多空对比 [5m更新]
+
+  大户: {top_long_pct}% 多 / {top_short_pct}% 空
+        {top_dir}{top_change_pct:.0f}% vs 1h前 ({top_desc})
+
+  散户: {global_long_pct}% 多 / {global_short_pct}% 空
+        {global_dir}{global_change_pct:.0f}% vs 1h前 ({global_desc})
+
+  → {consensus}
+
+━━━━━━━━━━━━━━━━━━━━
+{flow_section}
+
+  Taker: {taker_buy_pct}% 买 / {taker_sell_pct}% 卖
+         {taker_desc}
+
+━━━━━━━━━━━━━━━━━━━━
+📈 持仓 & 爆仓 [实时]
+
+  OI: {_format_usd(data["oi_value"])}
+      {data["oi_change_1h"]:+.1f}% vs 1h前
+      → {oi_interp}
+
+  爆仓 (1h): {_format_usd(data["liq_1h_total"])}
+      多 {liq_long_pct}% / 空 {liq_short_pct}%
+      → {liq_desc}
+
+━━━━━━━━━━━━━━━━━━━━
+📊 情绪指标
+
+  资金费率: {data["funding_rate"]:+.3f}%
+            {funding_desc}
+
+  合约溢价: {data["spot_perp_spread"]:+.2f}%
+
+⏰ {now}"""
