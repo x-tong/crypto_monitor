@@ -189,3 +189,167 @@ async def test_get_latest_long_short_snapshot(db: Database):
     latest = await db.get_latest_long_short_snapshot("BTCUSDT", "top_position")
     assert latest is not None
     assert latest["long_ratio"] == 0.65
+
+
+async def test_extreme_events_table_created(db: Database):
+    """验证表创建"""
+    assert db.conn is not None
+    cursor = await db.conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='extreme_events'"
+    )
+    row = await cursor.fetchone()
+    assert row is not None
+
+
+async def test_insert_and_get_extreme_event(db: Database):
+    from src.storage.models import ExtremeEvent
+
+    event = ExtremeEvent(
+        id=None,
+        symbol="BTC",
+        dimension="flow_1h",
+        window_days=30,
+        triggered_at=1706600000000,
+        value=47_700_000.0,
+        percentile=92.5,
+        price_at_trigger=82000.0,
+        price_4h=None,
+        price_12h=None,
+        price_24h=None,
+        price_48h=None,
+    )
+    event_id = await db.insert_extreme_event(event)
+    assert event_id > 0
+
+    events = await db.get_extreme_events("BTC", "flow_1h", 30, limit=10)
+    assert len(events) == 1
+    assert events[0].percentile == 92.5
+
+
+async def test_get_extreme_events_completed_only(db: Database):
+    """只返回有完整后续价格的事件"""
+    from src.storage.models import ExtremeEvent
+
+    # 插入一个完整的事件
+    complete = ExtremeEvent(
+        id=None,
+        symbol="BTC",
+        dimension="flow_1h",
+        window_days=30,
+        triggered_at=1706500000000,
+        value=50_000_000.0,
+        percentile=95.0,
+        price_at_trigger=80000.0,
+        price_4h=80500.0,
+        price_12h=79000.0,
+        price_24h=78000.0,
+        price_48h=79500.0,
+    )
+    await db.insert_extreme_event(complete)
+
+    # 插入一个不完整的事件
+    incomplete = ExtremeEvent(
+        id=None,
+        symbol="BTC",
+        dimension="flow_1h",
+        window_days=30,
+        triggered_at=1706600000000,
+        value=47_700_000.0,
+        percentile=92.5,
+        price_at_trigger=82000.0,
+        price_4h=None,
+        price_12h=None,
+        price_24h=None,
+        price_48h=None,
+    )
+    await db.insert_extreme_event(incomplete)
+
+    # 获取完整事件
+    events = await db.get_extreme_events("BTC", "flow_1h", 30, completed_only=True)
+    assert len(events) == 1
+    assert events[0].price_48h == 79500.0
+
+
+async def test_update_extreme_event_prices(db: Database):
+    """测试回填后续价格"""
+    from src.storage.models import ExtremeEvent
+
+    event = ExtremeEvent(
+        id=None,
+        symbol="BTC",
+        dimension="flow_1h",
+        window_days=30,
+        triggered_at=1706600000000,
+        value=47_700_000.0,
+        percentile=92.5,
+        price_at_trigger=82000.0,
+        price_4h=None,
+        price_12h=None,
+        price_24h=None,
+        price_48h=None,
+    )
+    event_id = await db.insert_extreme_event(event)
+
+    await db.update_extreme_event_price(event_id, "price_4h", 82500.0)
+
+    events = await db.get_extreme_events("BTC", "flow_1h", 30)
+    assert events[0].price_4h == 82500.0
+
+
+async def test_get_pending_backfill_events(db: Database):
+    """测试获取待回填事件"""
+    from src.storage.models import ExtremeEvent
+
+    now = int(time.time() * 1000)
+
+    # 插入一个 5 小时前的事件（应该回填 price_4h）
+    old_event = ExtremeEvent(
+        id=None,
+        symbol="BTC",
+        dimension="flow_1h",
+        window_days=30,
+        triggered_at=now - 5 * 3600 * 1000,
+        value=47_700_000.0,
+        percentile=92.5,
+        price_at_trigger=82000.0,
+        price_4h=None,
+        price_12h=None,
+        price_24h=None,
+        price_48h=None,
+    )
+    await db.insert_extreme_event(old_event)
+
+    pending = await db.get_pending_backfill_events()
+    assert len(pending) >= 1
+    assert any(e.price_4h is None for e in pending)
+
+
+async def test_check_cooldown(db: Database):
+    """测试冷却期检查"""
+    from src.storage.models import ExtremeEvent
+
+    now = int(time.time() * 1000)
+
+    event = ExtremeEvent(
+        id=None,
+        symbol="BTC",
+        dimension="flow_1h",
+        window_days=30,
+        triggered_at=now - 30 * 60 * 1000,  # 30 分钟前
+        value=47_700_000.0,
+        percentile=92.5,
+        price_at_trigger=82000.0,
+        price_4h=None,
+        price_12h=None,
+        price_24h=None,
+        price_48h=None,
+    )
+    await db.insert_extreme_event(event)
+
+    # 冷却期内
+    in_cooldown = await db.is_in_cooldown("BTC", "flow_1h", 30, cooldown_hours=1)
+    assert in_cooldown is True
+
+    # 不同窗口不受影响
+    not_in_cooldown = await db.is_in_cooldown("BTC", "flow_1h", 7, cooldown_hours=1)
+    assert not_in_cooldown is False

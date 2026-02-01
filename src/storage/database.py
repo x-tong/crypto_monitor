@@ -4,7 +4,14 @@ from typing import Any
 
 import aiosqlite
 
-from .models import Liquidation, MarketIndicator, OISnapshot, PriceAlert, Trade
+from .models import (
+    ExtremeEvent,
+    Liquidation,
+    MarketIndicator,
+    OISnapshot,
+    PriceAlert,
+    Trade,
+)
 
 
 class Database:
@@ -102,6 +109,24 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS idx_ls_symbol_type_time
                 ON long_short_snapshots(symbol, ratio_type, timestamp);
+
+            CREATE TABLE IF NOT EXISTS extreme_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                dimension TEXT NOT NULL,
+                window_days INTEGER NOT NULL,
+                triggered_at INTEGER NOT NULL,
+                value REAL NOT NULL,
+                percentile REAL NOT NULL,
+                price_at_trigger REAL NOT NULL,
+                price_4h REAL,
+                price_12h REAL,
+                price_24h REAL,
+                price_48h REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_extreme_events_lookup
+                ON extreme_events(symbol, dimension, window_days, triggered_at);
         """)
         await self.conn.commit()
 
@@ -368,3 +393,102 @@ class Database:
             ]
             return dict(zip(columns, row))
         return None
+
+    async def insert_extreme_event(self, event: ExtremeEvent) -> int:
+        assert self.conn is not None
+        cursor = await self.conn.execute(
+            """INSERT INTO extreme_events
+               (symbol, dimension, window_days, triggered_at, value, percentile,
+                price_at_trigger, price_4h, price_12h, price_24h, price_48h)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                event.symbol,
+                event.dimension,
+                event.window_days,
+                event.triggered_at,
+                event.value,
+                event.percentile,
+                event.price_at_trigger,
+                event.price_4h,
+                event.price_12h,
+                event.price_24h,
+                event.price_48h,
+            ),
+        )
+        await self.conn.commit()
+        return cursor.lastrowid or 0
+
+    async def get_extreme_events(
+        self,
+        symbol: str,
+        dimension: str,
+        window_days: int,
+        limit: int = 20,
+        completed_only: bool = False,
+    ) -> list[ExtremeEvent]:
+        assert self.conn is not None
+        query = """SELECT id, symbol, dimension, window_days, triggered_at, value,
+                          percentile, price_at_trigger, price_4h, price_12h, price_24h, price_48h
+                   FROM extreme_events
+                   WHERE symbol = ? AND dimension = ? AND window_days = ?"""
+        if completed_only:
+            query += " AND price_48h IS NOT NULL"
+        query += " ORDER BY triggered_at DESC LIMIT ?"
+        cursor = await self.conn.execute(query, (symbol, dimension, window_days, limit))
+        rows = await cursor.fetchall()
+        return [ExtremeEvent(*row) for row in rows]
+
+    async def update_extreme_event_price(
+        self, event_id: int, price_field: str, price: float
+    ) -> None:
+        assert self.conn is not None
+        valid_fields = {"price_4h", "price_12h", "price_24h", "price_48h"}
+        if price_field not in valid_fields:
+            raise ValueError(f"Invalid price field: {price_field}")
+        await self.conn.execute(
+            f"UPDATE extreme_events SET {price_field} = ? WHERE id = ?",
+            (price, event_id),
+        )
+        await self.conn.commit()
+
+    async def get_pending_backfill_events(self) -> list[ExtremeEvent]:
+        """获取需要回填后续价格的事件"""
+        assert self.conn is not None
+        now = int(time.time() * 1000)
+        cursor = await self.conn.execute(
+            """SELECT id, symbol, dimension, window_days, triggered_at, value,
+                      percentile, price_at_trigger, price_4h, price_12h, price_24h, price_48h
+               FROM extreme_events
+               WHERE (price_4h IS NULL AND triggered_at <= ?)
+                  OR (price_12h IS NULL AND triggered_at <= ?)
+                  OR (price_24h IS NULL AND triggered_at <= ?)
+                  OR (price_48h IS NULL AND triggered_at <= ?)
+               ORDER BY triggered_at ASC""",
+            (
+                now - 4 * 3600 * 1000,
+                now - 12 * 3600 * 1000,
+                now - 24 * 3600 * 1000,
+                now - 48 * 3600 * 1000,
+            ),
+        )
+        rows = await cursor.fetchall()
+        return [ExtremeEvent(*row) for row in rows]
+
+    async def is_in_cooldown(
+        self,
+        symbol: str,
+        dimension: str,
+        window_days: int,
+        cooldown_hours: int = 1,
+    ) -> bool:
+        """检查是否在冷却期内"""
+        assert self.conn is not None
+        cutoff = int(time.time() * 1000) - cooldown_hours * 3600 * 1000
+        cursor = await self.conn.execute(
+            """SELECT 1 FROM extreme_events
+               WHERE symbol = ? AND dimension = ? AND window_days = ? AND triggered_at > ?
+               LIMIT 1""",
+            (symbol, dimension, window_days, cutoff),
+        )
+        row = await cursor.fetchone()
+        return row is not None
