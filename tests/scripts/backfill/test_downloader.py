@@ -1,7 +1,5 @@
 # tests/scripts/backfill/test_downloader.py
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 def test_get_monthly_range():
@@ -43,14 +41,10 @@ async def test_download_file_creates_cache_dir(tmp_path):
         mock_session_instance = MagicMock()
         mock_session_instance.get = MagicMock(return_value=mock_get_cm)
 
-        mock_session.return_value.__aenter__ = AsyncMock(
-            return_value=mock_session_instance
-        )
+        mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_session_instance)
         mock_session.return_value.__aexit__ = AsyncMock(return_value=None)
 
-        await downloader.download_file(
-            "https://example.com/test.zip", tmp_path / "test.zip"
-        )
+        await downloader.download_file("https://example.com/test.zip", tmp_path / "test.zip")
 
     assert (tmp_path / "test.zip").exists()
 

@@ -12,7 +12,6 @@ import argparse
 import asyncio
 import logging
 from collections.abc import Sequence
-from pathlib import Path
 
 from src.scripts.backfill.config import (
     CACHE_DIR,
@@ -84,7 +83,7 @@ def load_processed_data(symbol: str, dimension: str) -> list[tuple[int, float]]:
         return []
 
     data = []
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         reader = csv.DictReader(f)
         for row in reader:
             data.append((int(row["timestamp"]), float(row["value"])))

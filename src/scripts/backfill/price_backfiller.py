@@ -26,7 +26,7 @@ def load_klines(csv_files: list[Path]) -> dict[int, float]:
     klines = {}
 
     for csv_path in sorted(csv_files):
-        with open(csv_path, "r") as f:
+        with open(csv_path) as f:
             reader = csv.DictReader(f)
             for row in reader:
                 open_time = int(row["open_time"])

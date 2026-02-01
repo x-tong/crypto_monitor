@@ -1,6 +1,4 @@
 # tests/scripts/backfill/test_price_backfiller.py
-import pytest
-from pathlib import Path
 
 
 def test_load_klines(tmp_path):

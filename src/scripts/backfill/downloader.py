@@ -2,17 +2,16 @@
 
 import logging
 import zipfile
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import aiohttp
 
 from .config import (
-    AGG_TRADES_DIR,
     BINANCE_DATA_URL,
     CACHE_DIR,
-    INDICATORS_DIR,
-    KLINES_DIR,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,7 +97,7 @@ class Downloader:
         self,
         symbol: str,
         months: list[str],
-        progress_callback: callable | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[Path]:
         """下载 aggTrades 数据"""
         downloaded = []
@@ -135,7 +134,7 @@ class Downloader:
         self,
         symbol: str,
         months: list[str],
-        progress_callback: callable | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[Path]:
         """下载 K 线数据"""
         downloaded = []
@@ -170,7 +169,7 @@ class Downloader:
         self,
         symbols: list[str],
         days: int,
-        progress_callback: callable | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> dict[str, dict[str, list[Path]]]:
         """下载所有需要的数据"""
         months = get_monthly_range(days)
@@ -178,9 +177,7 @@ class Downloader:
 
         for symbol in symbols:
             result[symbol] = {
-                "aggTrades": await self.download_agg_trades(
-                    symbol, months, progress_callback
-                ),
+                "aggTrades": await self.download_agg_trades(symbol, months, progress_callback),
                 "klines": await self.download_klines(symbol, months, progress_callback),
             }
 
@@ -189,7 +186,7 @@ class Downloader:
     async def download_indicators(
         self,
         symbol: str,
-        client: "BinanceClient",  # type: ignore[name-defined]
+        client: Any,  # BinanceClient
         days: int = 365,
     ) -> dict[str, Path]:
         """从 API 下载指标数据"""

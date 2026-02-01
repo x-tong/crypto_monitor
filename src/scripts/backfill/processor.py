@@ -11,7 +11,7 @@ def calculate_monthly_p95_threshold(csv_path: Path) -> float:
     """计算单月 aggTrades 的 P95 大单阈值"""
     values = []
 
-    with open(csv_path, "r") as f:
+    with open(csv_path) as f:
         reader = csv.DictReader(f)
         for row in reader:
             price = float(row["price"])
@@ -43,7 +43,7 @@ def process_agg_trades_to_flow(
     """
     hourly_flow: dict[int, float] = {}
 
-    with open(csv_path, "r") as f:
+    with open(csv_path) as f:
         reader = csv.DictReader(f)
         for row in reader:
             price = float(row["price"])
