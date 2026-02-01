@@ -15,3 +15,25 @@ def test_market_indicator_creation():
     )
     assert indicator.symbol == "BTC/USDT:USDT"
     assert indicator.top_account_ratio == 1.5
+
+
+def test_extreme_event_model():
+    from src.storage.models import ExtremeEvent
+
+    event = ExtremeEvent(
+        id=None,
+        symbol="BTC",
+        dimension="flow_1h",
+        window_days=30,
+        triggered_at=1706600000000,
+        value=47_700_000.0,
+        percentile=92.5,
+        price_at_trigger=82000.0,
+        price_4h=None,
+        price_12h=None,
+        price_24h=None,
+        price_48h=None,
+    )
+    assert event.symbol == "BTC"
+    assert event.window_days == 30
+    assert event.price_4h is None
