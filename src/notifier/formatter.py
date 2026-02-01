@@ -381,6 +381,81 @@ def format_observe_alert(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _format_timestamp_short(ts_ms: int) -> str:
+    """格式化时间戳为短格式 (M/D)"""
+    dt = datetime.fromtimestamp(ts_ms / 1000, tz=UTC)
+    return dt.strftime("%m/%d").lstrip("0").replace("/0", "/")
+
+
+def format_history_reference_block(
+    stats: dict[str, Any],
+    latest: dict[str, Any],
+    min_count: int = 5,
+) -> str:
+    """
+    格式化历史参考区块
+
+    Args:
+        stats: {窗口: {count, stats}} 统计数据
+        latest: {窗口: {triggered_at, price_at_trigger, change_24h}} 最近事件
+        min_count: 最小样本数
+
+    Returns:
+        格式化的历史参考文本
+    """
+    if not stats:
+        return ""
+
+    lines = ["  ┌─ 历史参考 ────────────────"]
+
+    has_valid_data = False
+    for window in ["7d", "30d", "90d"]:
+        if window not in stats:
+            continue
+
+        window_stats = stats[window]
+        count = window_stats.get("count", 0)
+
+        if count < min_count:
+            lines.append(f"  │ {window} P90+: 数据积累中 ({count}次)")
+            continue
+
+        has_valid_data = True
+        period_stats = window_stats.get("stats", {})
+
+        lines.append(f"  │ {window} P90+ (近{count}次):")
+
+        # 显示 24h 统计
+        if "24h" in period_stats:
+            s = period_stats["24h"]
+            up = s["up_pct"]
+            down = s["down_pct"]
+            avg = s["avg_change"]
+            sign = "+" if avg >= 0 else ""
+            lines.append(f"  │   24h: ↑{up:.0f}% / ↓{down:.0f}%  均值 {sign}{avg:.1f}%")
+
+        lines.append("  │")
+
+    # 显示最近案例（优先较长窗口）
+    for window in ["90d", "30d", "7d"]:
+        if window in latest and latest[window]:
+            event = latest[window]
+            date_str = _format_timestamp_short(event["triggered_at"])
+            price = event["price_at_trigger"]
+            change = event["change_24h"]
+            if change is not None:
+                sign = "+" if change >= 0 else ""
+                lines.append(f"  │ 最近({window}): {date_str} ${price:,.0f} → 24h {sign}{change:.1f}%")
+            break
+
+    lines.append("  └───────────────────────────────")
+
+    if not has_valid_data and not any("最近" in line for line in lines):
+        return "  ┌─ 历史参考 ────────────────\n  │ 数据积累中\n  └───────────────────────────────"
+
+    return "\n".join(lines)
+
+
 def format_important_alert(data: dict[str, Any]) -> str:
     """格式化重要提醒（多维度共振）"""
     dimensions = data.get("dimensions", [])

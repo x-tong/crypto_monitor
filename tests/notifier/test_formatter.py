@@ -170,3 +170,57 @@ def test_format_important_alert():
     assert "主力资金" in result
     assert "OI" in result or "持仓量" in result
     assert "爆仓" in result
+
+
+def test_format_history_reference_block():
+    from src.notifier.formatter import format_history_reference_block
+
+    stats = {
+        "7d": {
+            "count": 20,
+            "stats": {
+                "24h": {"up_pct": 45.0, "down_pct": 55.0, "avg_change": -1.2},
+            },
+        },
+        "30d": {
+            "count": 15,
+            "stats": {
+                "24h": {"up_pct": 35.0, "down_pct": 65.0, "avg_change": -2.8},
+            },
+        },
+    }
+    latest = {
+        "30d": {
+            "triggered_at": 1706400000000,  # 2024-01-28
+            "price_at_trigger": 82000.0,
+            "change_24h": -4.8,
+        }
+    }
+
+    result = format_history_reference_block(stats, latest)
+
+    assert "7d P90+" in result
+    assert "近20次" in result
+    assert "45%" in result
+    assert "55%" in result
+    assert "30d P90+" in result
+    assert "最近(30d)" in result
+    assert "-4.8%" in result
+
+
+def test_format_history_reference_block_insufficient_data():
+    from src.notifier.formatter import format_history_reference_block
+
+    stats = {"7d": {"count": 3, "stats": {}}}  # 少于 5 次
+    latest = {}
+
+    result = format_history_reference_block(stats, latest)
+
+    assert "数据积累中" in result
+
+
+def test_format_history_reference_block_empty():
+    from src.notifier.formatter import format_history_reference_block
+
+    result = format_history_reference_block({}, {})
+    assert result == ""
