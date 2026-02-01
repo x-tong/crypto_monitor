@@ -6,10 +6,11 @@
     uv run python -m src.scripts.backfill_events --days 365
     uv run python -m src.scripts.backfill_events --days 365 --symbol BTC
 """
+
 import argparse
 import asyncio
 import logging
-from typing import Sequence
+from collections.abc import Sequence
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

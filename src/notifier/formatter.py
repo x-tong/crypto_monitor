@@ -445,7 +445,8 @@ def format_history_reference_block(
             change = event["change_24h"]
             if change is not None:
                 sign = "+" if change >= 0 else ""
-                lines.append(f"  │ 最近({window}): {date_str} ${price:,.0f} → 24h {sign}{change:.1f}%")
+                line = f"  │ 最近({window}): {date_str} ${price:,.0f} → 24h {sign}{change:.1f}%"
+                lines.append(line)
             break
 
     lines.append("  └───────────────────────────────")

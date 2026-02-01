@@ -76,5 +76,3 @@ src/
 
 ## 文档
 - 外部文档优先使用 context7 mcp
-- 设计文档：[docs/DESIGN.md](docs/DESIGN.md)
-- 重构计划：[docs/plans/2026-02-01-binance-refactor-impl.md](docs/plans/2026-02-01-binance-refactor-impl.md)

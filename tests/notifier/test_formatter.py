@@ -289,7 +289,11 @@ def test_format_insight_report_with_history():
                 },
             },
             "latest": {
-                "30d": {"triggered_at": 1706400000000, "price_at_trigger": 82000.0, "change_24h": -4.8}
+                "30d": {
+                    "triggered_at": 1706400000000,
+                    "price_at_trigger": 82000.0,
+                    "change_24h": -4.8,
+                }
             },
         }
     }

@@ -80,9 +80,7 @@ class EventStats:
         e = events[0]
         change_24h = None
         if e.price_24h is not None and e.price_at_trigger > 0:
-            change_24h = round(
-                (e.price_24h - e.price_at_trigger) / e.price_at_trigger * 100, 2
-            )
+            change_24h = round((e.price_24h - e.price_at_trigger) / e.price_at_trigger * 100, 2)
 
         return {
             "triggered_at": e.triggered_at,
