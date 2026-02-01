@@ -536,6 +536,9 @@ class CryptoMonitor:
         window_days = self.config.percentile.window_days
         window_hours = window_days * 24
 
+        # 冷却记录：{(symbol, level): last_sent_time}
+        last_sent: dict[tuple[str, str], float] = {}
+
         while self.running:
             await asyncio.sleep(60)  # 每分钟检查
 
@@ -556,9 +559,17 @@ class CryptoMonitor:
                     if not indicators:
                         continue
 
+                    # 获取市场指标（大户/散户持仓）
+                    current_mi = await self.db.get_latest_market_indicator(symbol)
+                    if not current_mi:
+                        continue
+
                     # 获取历史数据用于计算百分位
                     trades_history = await self.db.get_trades(symbol, hours=window_hours)
                     liqs_history = await self.db.get_liquidations(symbol, hours=window_hours)
+                    history_mi = await self.db.get_market_indicator_history(
+                        symbol, hours=window_hours
+                    )
 
                     # 按小时聚合历史 flow 数据
                     flow_history: list[float] = []
@@ -599,6 +610,10 @@ class CryptoMonitor:
                     )
                     ls_ratio_history = [s["long_short_ratio"] for s in ls_history]
 
+                    # 大户/散户持仓历史
+                    top_pos_history = [mi.top_position_ratio for mi in history_mi]
+                    global_acc_history = [mi.global_account_ratio for mi in history_mi]
+
                     # 历史数据不足时跳过（需要至少 10 个数据点才能计算有意义的百分位）
                     min_history = 10
                     oi_len, ls_len = len(oi_change_history), len(ls_ratio_history)
@@ -607,6 +622,13 @@ class CryptoMonitor:
                         continue
 
                     # 计算各维度百分位
+                    top_pos_pct = calculate_percentile(
+                        current_mi.top_position_ratio, top_pos_history
+                    )
+                    global_acc_pct = calculate_percentile(
+                        current_mi.global_account_ratio, global_acc_history
+                    )
+
                     percentiles: dict[str, float] = {
                         "主力资金": calculate_percentile(flow.net, flow_history),
                         "OI变化": calculate_percentile(oi_change, oi_change_history),
@@ -618,6 +640,8 @@ class CryptoMonitor:
                         "多空比": calculate_percentile(
                             indicators.long_short_ratio, ls_ratio_history
                         ),
+                        "大户持仓": top_pos_pct,
+                        "散户持仓": global_acc_pct,
                     }
 
                     # 检查分级告警
@@ -627,26 +651,54 @@ class CryptoMonitor:
 
                     for alert in alerts:
                         short_symbol = symbol.split("/")[0]
+                        now = time.time()
+
+                        # 检查冷却
+                        cooldown_key = (symbol, alert.level.value)
+                        cooldown_minutes = (
+                            observe_config.cooldown_minutes
+                            if alert.level == AlertLevel.OBSERVE
+                            else important_config.cooldown_minutes
+                        )
+                        if cooldown_key in last_sent:
+                            elapsed = now - last_sent[cooldown_key]
+                            if elapsed < cooldown_minutes * 60:
+                                logger.debug(
+                                    f"Skip {alert.level.value} alert {symbol}: "
+                                    f"cooldown {int(elapsed)}s/{cooldown_minutes * 60}s"
+                                )
+                                continue
+
                         timestamp = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
 
-                        # 格式化维度数据
-                        dimensions = [(name, pct, f"{pct:.0f}") for name, pct in alert.dimensions]
-
+                        # 构建详细数据
                         data = {
                             "symbol": short_symbol,
                             "price": indicators.futures_price if indicators else 0,
                             "price_change_1h": 0,
-                            "dimensions": dimensions,
+                            "dimensions": alert.dimensions,
                             "timestamp": timestamp,
+                            # 大户/散户详细数据
+                            "top_position_ratio": current_mi.top_position_ratio,
+                            "top_position_pct": top_pos_pct,
+                            "global_account_ratio": current_mi.global_account_ratio,
+                            "global_account_pct": global_acc_pct,
+                            # 其他指标原始值
+                            "flow_net": flow.net,
+                            "oi_change": oi_change,
+                            "liq_total": liq_stats.total,
+                            "funding_rate": indicators.funding_rate,
                         }
 
                         if alert.level == AlertLevel.OBSERVE and observe_config.enabled:
                             msg = format_observe_alert(data)
                             await self.notifier.send_message(msg)
+                            last_sent[cooldown_key] = now
                             logger.info(f"Observe alert: {symbol}")
                         elif alert.level == AlertLevel.IMPORTANT and important_config.enabled:
                             msg = format_important_alert(data)
                             await self.notifier.send_message(msg)
+                            last_sent[cooldown_key] = now
                             logger.info(f"Important alert: {symbol}")
 
                 except Exception as e:

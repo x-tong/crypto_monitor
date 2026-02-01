@@ -35,12 +35,14 @@ class AlertConfig(BaseModel):
 class ObserveAlertConfig(BaseModel):
     enabled: bool = True
     percentile_threshold: int = 90
+    cooldown_minutes: int = 30
 
 
 class ImportantAlertConfig(BaseModel):
     enabled: bool = True
     percentile_threshold: int = 90
     min_dimensions: int = 3
+    cooldown_minutes: int = 30
 
 
 class AlertsConfig(BaseModel):

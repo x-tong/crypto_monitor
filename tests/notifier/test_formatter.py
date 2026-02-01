@@ -121,15 +121,24 @@ def test_format_observe_alert():
         "symbol": "BTC",
         "price": 103850,
         "price_change_1h": -0.5,
-        "dimensions": [("主力资金", 92, "-$8.2M")],
+        "dimensions": [("散户持仓", 92)],
         "timestamp": "2026-01-30 14:32 UTC",
+        "top_position_ratio": 1.86,  # 65% 多
+        "top_position_pct": 50,
+        "global_account_ratio": 2.57,  # 72% 多
+        "global_account_pct": 92,
+        "flow_net": -8200000,
+        "oi_change": 0.5,
+        "liq_total": 5000000,
+        "funding_rate": 0.0001,
     }
 
     result = format_observe_alert(data)
     assert "📢 BTC 观察提醒" in result
-    assert "主力资金" in result
-    assert "🔴 P92" in result
-    assert "-$8.2M" in result
+    assert "持仓多空比" in result
+    assert "散户" in result
+    assert "大户" in result
+    assert "P92" in result
 
 
 def test_format_important_alert():
@@ -140,16 +149,24 @@ def test_format_important_alert():
         "price": 101200,
         "price_change_1h": -2.8,
         "dimensions": [
-            ("主力资金", 96, "-$15.2M"),
-            ("OI变化", 94, "+4.2%"),
-            ("爆仓", 95, "$35M"),
+            ("主力资金", 96),
+            ("OI变化", 94),
+            ("爆仓", 95),
         ],
         "timestamp": "2026-01-30 14:32 UTC",
+        "top_position_ratio": 1.86,
+        "top_position_pct": 50,
+        "global_account_ratio": 2.57,
+        "global_account_pct": 70,
+        "flow_net": -15200000,
+        "oi_change": 4.2,
+        "liq_total": 35000000,
+        "funding_rate": 0.0001,
     }
 
     result = format_important_alert(data)
     assert "🚨 BTC 重要提醒" in result
-    assert "3 维度共振" in result
+    assert "3 个维度" in result
     assert "主力资金" in result
-    assert "OI变化" in result
+    assert "OI" in result or "持仓量" in result
     assert "爆仓" in result

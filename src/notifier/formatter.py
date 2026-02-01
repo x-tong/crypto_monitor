@@ -285,21 +285,96 @@ def format_insight_report(data: dict[str, Any]) -> str:
 ⏰ {now}"""
 
 
+def _ratio_to_long_pct(ratio: float) -> float:
+    """将多空比转换为多头占比百分比"""
+    if ratio <= 0:
+        return 50.0
+    return ratio / (1 + ratio) * 100
+
+
+def _format_dimension_detail(name: str, pct: float, data: dict[str, Any]) -> list[str]:
+    """格式化单个维度的详细信息"""
+    lines: list[str] = []
+
+    if name in ("散户持仓", "大户持仓", "多空比"):
+        # 显示大户 vs 散户对比
+        top_ratio = data.get("top_position_ratio", 1.0)
+        global_ratio = data.get("global_account_ratio", 1.0)
+        top_pct = data.get("top_position_pct", 50)
+        global_pct = data.get("global_account_pct", 50)
+
+        top_long = _ratio_to_long_pct(top_ratio)
+        global_long = _ratio_to_long_pct(global_ratio)
+
+        lines.append("🎯 持仓多空比极端")
+        lines.append(
+            f"  散户: {global_long:.0f}% 多 / {100 - global_long:.0f}% 空 "
+            f"{get_level_emoji(global_pct)} P{int(global_pct)}"
+        )
+        lines.append(
+            f"  大户: {top_long:.0f}% 多 / {100 - top_long:.0f}% 空 "
+            f"{get_level_emoji(top_pct)} P{int(top_pct)}"
+        )
+
+        # 解读
+        if global_long > top_long + 5:
+            lines.append("  → 散户比大户更激进做多")
+        elif top_long > global_long + 5:
+            lines.append("  → 大户比散户更激进做多")
+        else:
+            lines.append("  → 大户散户一致看多")
+
+    elif name == "主力资金":
+        flow_net = data.get("flow_net", 0)
+        flow_str = _format_usd_signed(flow_net)
+        direction = "流入" if flow_net > 0 else "流出"
+        lines.append(f"💰 主力资金 1h 净{direction}")
+        lines.append(f"  {flow_str} 🔴 P{int(pct)}")
+
+    elif name == "OI变化":
+        oi_change = data.get("oi_change", 0)
+        direction = "增加" if oi_change > 0 else "减少"
+        lines.append(f"📈 持仓量 1h {direction}")
+        lines.append(f"  {oi_change:+.2f}% 🔴 P{int(pct)}")
+
+    elif name == "爆仓":
+        liq_total = data.get("liq_total", 0)
+        lines.append("💥 爆仓异常")
+        lines.append(f"  1h 总爆仓: {_format_usd(liq_total)} 🔴 P{int(pct)}")
+
+    elif name == "资金费率":
+        funding = data.get("funding_rate", 0)
+        direction = "多头付费" if funding > 0 else "空头付费"
+        lines.append("📊 资金费率极端")
+        lines.append(f"  {funding:.4%} ({direction}) 🔴 P{int(pct)}")
+
+    else:
+        # 其他维度
+        lines.append(f"• {name}: 🔴 P{int(pct)}")
+
+    return lines
+
+
 def format_observe_alert(data: dict[str, Any]) -> str:
-    """格式化观察提醒"""
+    """格式化观察提醒（详细版）"""
     lines = [
         f"📢 {data['symbol']} 观察提醒",
         "",
     ]
 
-    for name, percentile, value in data["dimensions"]:
-        lines.append(f"{name}: {value} 🔴 P{int(percentile)}")
+    # 只显示第一个（最重要的）维度的详细信息
+    dimensions = data.get("dimensions", [])
+    if dimensions:
+        name, pct = dimensions[0]
+        lines.extend(_format_dimension_detail(name, pct, data))
 
     lines.extend(
         [
             "",
             f"💵 ${data['price']:,.0f} ({data['price_change_1h']:+.1f}% 1h)",
             f"⏰ {data['timestamp']}",
+            "",
+            "ℹ️ P90+ = 历史90%的时候都比现在低",
         ]
     )
 
@@ -307,19 +382,31 @@ def format_observe_alert(data: dict[str, Any]) -> str:
 
 
 def format_important_alert(data: dict[str, Any]) -> str:
-    """格式化重要提醒"""
-    dim_count = len(data["dimensions"])
+    """格式化重要提醒（多维度共振）"""
+    dimensions = data.get("dimensions", [])
+    dim_count = len(dimensions)
+
     lines = [
-        f"🚨 {data['symbol']} 重要提醒 - {dim_count} 维度共振",
+        f"🚨 {data['symbol']} 重要提醒",
+        f"⚠️ {dim_count} 个维度同时处于极端值",
         "",
     ]
 
-    for name, percentile, value in data["dimensions"]:
-        lines.append(f"• {name}: {value} 🔴 P{int(percentile)}")
+    # 显示所有维度的详细信息
+    shown_position = False
+    for name, pct in dimensions:
+        # 持仓相关维度只显示一次（合并大户/散户/多空比）
+        if name in ("散户持仓", "大户持仓", "多空比"):
+            if not shown_position:
+                lines.extend(_format_dimension_detail(name, pct, data))
+                lines.append("")
+                shown_position = True
+        else:
+            lines.extend(_format_dimension_detail(name, pct, data))
+            lines.append("")
 
     lines.extend(
         [
-            "",
             f"💵 ${data['price']:,.0f} ({data['price_change_1h']:+.1f}% 1h)",
             f"⏰ {data['timestamp']}",
         ]
