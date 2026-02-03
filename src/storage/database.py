@@ -492,3 +492,36 @@ class Database:
         )
         row = await cursor.fetchone()
         return row is not None
+
+    async def cleanup_old_data(self, retention_days: int) -> dict[str, int]:
+        """
+        清理超过保留期的历史数据
+
+        Args:
+            retention_days: 数据保留天数
+
+        Returns:
+            {表名: 删除行数}
+        """
+        assert self.conn is not None
+        cutoff = int(time.time() * 1000) - retention_days * 24 * 3600 * 1000
+        deleted: dict[str, int] = {}
+
+        # 清理各表的旧数据
+        tables = [
+            ("trades", "timestamp"),
+            ("liquidations", "timestamp"),
+            ("oi_snapshots", "timestamp"),
+            ("market_indicators", "timestamp"),
+            ("long_short_snapshots", "timestamp"),
+        ]
+
+        for table, ts_column in tables:
+            cursor = await self.conn.execute(
+                f"DELETE FROM {table} WHERE {ts_column} < ?",
+                (cutoff,),
+            )
+            deleted[table] = cursor.rowcount
+            await self.conn.commit()
+
+        return deleted

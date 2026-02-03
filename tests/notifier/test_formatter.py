@@ -278,22 +278,11 @@ def test_format_insight_report_with_history():
 
     history_data = {
         "flow_1h": {
-            "stats": {
-                "7d": {
-                    "count": 20,
-                    "stats": {"24h": {"up_pct": 45.0, "down_pct": 55.0, "avg_change": -1.2}},
-                },
-                "30d": {
-                    "count": 15,
-                    "stats": {"24h": {"up_pct": 35.0, "down_pct": 65.0, "avg_change": -2.8}},
-                },
-            },
+            "stats": {"24h": {"up_pct": 45.0, "down_pct": 55.0, "avg_change": -1.2}},
             "latest": {
-                "30d": {
-                    "triggered_at": 1706400000000,
-                    "price_at_trigger": 82000.0,
-                    "change_24h": -4.8,
-                }
+                "triggered_at": 1706400000000,
+                "price_at_trigger": 82000.0,
+                "change_24h": -4.8,
             },
         }
     }
@@ -302,4 +291,6 @@ def test_format_insight_report_with_history():
 
     assert "P95(7d) / P92(30d) / P70(90d)" in result
     assert "历史参考" in result
-    assert "7d P90+" in result
+    assert "主力资金" in result
+    assert "24h: ↑45% / ↓55%" in result
+    assert "最近:" in result

@@ -41,12 +41,18 @@ class EventBackfiller:
         try:
             # 将内部 symbol (BTC) 转换为 Binance symbol (BTCUSDT)
             binance_symbol = f"{symbol}USDT"
-            klines = await self.client.get_klines(binance_symbol, "1h", limit=1)
+            # 获取目标时间附近的 K 线（向前取 1 小时）
+            klines = await self.client.get_klines(
+                binance_symbol,
+                "1h",
+                limit=1,
+                start_time=target_time_ms,
+            )
             if klines:
                 return klines[0].close
             return None
         except Exception as e:
-            logger.warning(f"Failed to get price for {symbol}: {e}")
+            logger.warning(f"Failed to get price for {symbol} at {target_time_ms}: {e}")
             return None
 
     async def backfill_one(self, event: ExtremeEvent, now_ms: int | None = None) -> int:

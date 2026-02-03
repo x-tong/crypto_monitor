@@ -119,6 +119,42 @@ def format_whale_alert(data: dict[str, Any]) -> str:
 ⏰ {now}"""
 
 
+def format_oi_alert(data: dict[str, Any]) -> str:
+    """格式化 OI 变化告警"""
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    direction = "增加" if data["oi_change_1h"] > 0 else "减少"
+
+    return f"""⚠️ {data["symbol"]} OI 异动
+
+1h 持仓量{direction} {data["oi_change_1h"]:+.2f}% {_level(data["oi_change_1h_pct"])}
+  当前 OI: {_format_usd(data["oi_value"])}
+
+💵 ${data["price"]:,.0f} ({data["price_change_1h"]:+.1f}% 1h)
+⏰ {now}"""
+
+
+def format_liquidation_alert(data: dict[str, Any]) -> str:
+    """格式化爆仓告警"""
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    liq_long_pct = int(data["liq_long_ratio"] * 100)
+    liq_short_pct = 100 - liq_long_pct
+
+    if data["liq_long_ratio"] > 0.65:
+        pressure = "多头承压"
+    elif data["liq_long_ratio"] < 0.35:
+        pressure = "空头承压"
+    else:
+        pressure = "多空均衡"
+
+    return f"""⚠️ {data["symbol"]} 爆仓异常
+
+1h 总爆仓 {_format_usd(data["liq_1h_total"])} {_level(data["liq_1h_pct"])}
+  多 {liq_long_pct}% / 空 {liq_short_pct}% → {pressure}
+
+💵 ${data["price"]:,.0f} ({data["price_change_1h"]:+.1f}% 1h)
+⏰ {now}"""
+
+
 def _ratio_to_pct(ratio: float) -> int:
     """将比率转换为多头百分比: 2.0 -> 67%"""
     if ratio <= 0:
@@ -582,27 +618,58 @@ def format_insight_report_with_history(
     else:
         funding_desc = "费率中性"
 
-    # 构建资金流向部分（可能包含历史参考）
+    # 构建资金流向部分
     flow_section = f"""💰 资金动向 [实时]
 
   主力净流向 (1h): {flow_1h}
     {flow_pct_str}
     Binance: {flow_binance}"""
 
-    # 检查是否需要显示历史参考
-    if _has_extreme(
-        data.get("flow_1h_pct_7d", 0),
-        data.get("flow_1h_pct_30d", 0),
-        data.get("flow_1h_pct_90d", 0),
-    ):
-        flow_history = history_data.get("flow_1h", {})
-        if flow_history:
-            history_block = format_history_reference_block(
-                flow_history.get("stats", {}),
-                flow_history.get("latest", {}),
-            )
-            if history_block:
-                flow_section += "\n\n" + history_block
+    # 构建历史参考区块（显示所有 P90+ 维度）
+    history_section = ""
+    if history_data:
+        history_lines = ["━━━━━━━━━━━━━━━━━━━━", "📜 历史参考 (P90+ 维度)", ""]
+
+        # 维度名称映射
+        dim_names = {
+            "flow_1h": "主力资金",
+            "oi_change_1h": "OI变化",
+            "funding_rate": "资金费率",
+            "top_position_ratio": "大户持仓",
+            "global_account_ratio": "散户持仓",
+            "taker_ratio": "Taker比例",
+        }
+
+        for dim_key, dim_name in dim_names.items():
+            if dim_key in history_data:
+                dim_history = history_data[dim_key]
+                stats = dim_history.get("stats", {})
+                latest = dim_history.get("latest")
+
+                history_lines.append(f"【{dim_name}】")
+
+                # 显示 24h 统计
+                if "24h" in stats:
+                    s = stats["24h"]
+                    up = s["up_pct"]
+                    down = s["down_pct"]
+                    avg = s["avg_change"]
+                    sign = "+" if avg >= 0 else ""
+                    history_lines.append(f"  24h: ↑{up:.0f}% / ↓{down:.0f}%  均值 {sign}{avg:.1f}%")
+
+                # 显示最近案例
+                if latest and latest.get("change_24h") is not None:
+                    date_str = _format_timestamp_short(latest["triggered_at"])
+                    price = latest["price_at_trigger"]
+                    change = latest["change_24h"]
+                    sign = "+" if change >= 0 else ""
+                    line = f"  最近: {date_str} ${price:,.0f} → 24h {sign}{change:.1f}%"
+                    history_lines.append(line)
+
+                history_lines.append("")
+
+        if len(history_lines) > 3:  # 有实际内容
+            history_section = "\n" + "\n".join(history_lines)
 
     # 构建报告
     return f"""📊 {data["symbol"]} 市场洞察
@@ -644,5 +711,5 @@ def format_insight_report_with_history(
             {funding_desc}
 
   合约溢价: {data["spot_perp_spread"]:+.2f}%
-
+{history_section}
 ⏰ {now}"""

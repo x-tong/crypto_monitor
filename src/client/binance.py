@@ -66,28 +66,45 @@ class BinanceClient:
 
         return await response.json()
 
-    async def __aenter__(self) -> BinanceClient:
-        self._session = aiohttp.ClientSession()
-        return self
+    async def init(self) -> None:
+        """初始化 HTTP 会话"""
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
 
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    async def close(self) -> None:
+        """关闭 HTTP 会话"""
         if self._session:
             await self._session.close()
             self._session = None
+
+    async def __aenter__(self) -> BinanceClient:
+        await self.init()
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        await self.close()
 
     async def get_klines(
         self,
         symbol: str,
         interval: str,
         limit: int = 500,
+        start_time: int | None = None,
+        end_time: int | None = None,
     ) -> list[Kline]:
         """获取 K 线数据"""
         from src.client.models import Kline
 
+        params: dict[str, str | int] = {"symbol": symbol, "interval": interval, "limit": limit}
+        if start_time is not None:
+            params["startTime"] = start_time
+        if end_time is not None:
+            params["endTime"] = end_time
+
         data = await self._request(
             "GET",
             "/fapi/v1/klines",
-            {"symbol": symbol, "interval": interval, "limit": limit},
+            params,
         )
         return [
             Kline(
